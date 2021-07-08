@@ -1,8 +1,6 @@
 package components
 
 import (
-	"fmt"
-
 	"github.com/arturoeanton/go-echo-live-view/liveview"
 )
 
@@ -29,9 +27,6 @@ func (t *Button) GetTemplate() string {
 }
 
 func (t *Button) Click(data interface{}) {
-	t.I++
-	text := t.Driver.GetElementById("t1")
-	t.Driver.FillValue("d5", fmt.Sprint(t.I)+" "+text)
 }
 
 func (t *Button) GetID() string {
