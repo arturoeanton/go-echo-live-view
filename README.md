@@ -5,7 +5,7 @@ Little POC for test the idea  of Phoenix LiveView in Go and Echo
 The idea was stolen from  https://github.com/brendonmatos/golive 
 
 
-`go
+```golang
 package main
 
 import (
@@ -66,4 +66,4 @@ func main() {
 	e.Logger.Fatal(e.Start(":1323"))
 }
 
-`
+```
