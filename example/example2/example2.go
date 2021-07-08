@@ -24,54 +24,33 @@ func main() {
 
 	home.Register(func() *liveview.ComponentDriver {
 
-		button1 := components.NewButton("b1", "button1")
-		button2 := components.NewButton("b2", "button2")
-		text1 := components.NewInputText("t1")
-
-		text1.Events["KeyPress"] = func(data interface{}) {
-			fmt.Println("KeyPress:" + data.(string))
-		}
+		button1 := components.NewButton("button1", "button1")
+		text1 := components.NewInputText("text1")
 
 		text1.Events["KeyUp"] = func(data interface{}) {
-			fmt.Println("KeyUp:" + data.(string))
+			text1.FillValue("div_text_result", data.(string))
 		}
-
-		text1.Events["Change"] = func(data interface{}) {
-			fmt.Println("Change:" + data.(string))
-		} //*/
 
 		button1.Events["Click"] = func(data interface{}) {
 			button := button1.Component.(*components.Button)
 			button.I++
-			text := button.Driver.GetElementById("t1")
-			button.Driver.FillValue("d6", fmt.Sprint(button.I)+" -> "+text)
+			text := button.Driver.GetElementById("text1")
+			button.Driver.FillValue("span_result", fmt.Sprint(button.I)+" -> "+text)
 			button.Driver.EvalScript("console.log(1)")
 		}
 
-		button2.Events["Click"] = func(data interface{}) {
-			button := button2.Component.(*components.Button)
-			button.I++
-			text := button.Driver.GetElementById("t1")
-			button.Driver.FillValue("d7", fmt.Sprint(button.I)+" <- "+text)
-			button.Driver.EvalScript("console.log(2)")
-		} //*/
-
 		content := components.NewLayout("home", `
-		<div id="d2"></div>
-		<div id="d3"></div>
+		<div id="div_text"></div>
+		<div id="div_text_result"></div>
 		<div>
-			<span id="d4"></span>
-			<span id="d5"></span>
+			<span id="span_button"></span>
 		</div>
 		<div>
-			<span id="d6"></span>
-			<span id="d7"></span>
+			<span id="span_result"></span>
 		</div>
 		`)
-		content.Mount("d2", components.NewClock("c1"))
-		content.Mount("d3", text1)
-		content.Mount("d4", button1)
-		content.Mount("d5", button2)
+		content.Mount("div_text", text1)
+		content.Mount("span_button", button1)
 
 		return content
 	})
