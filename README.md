@@ -1,5 +1,5 @@
 # go-echo-live-view
-Little POC for test the idea  of Phoenix LiveView in Go and Echo  
+Little POC for test the idea  of Phoenix LiveView in Go and Echo (https://github.com/labstack/echo) 
 
 
 The idea was stolen from  https://github.com/brendonmatos/golive 
