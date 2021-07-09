@@ -16,10 +16,12 @@ func main() {
 	e.Use(middleware.Recover())
 
 	home := liveview.PageControl{
-		Title:  "Home",
-		Lang:   "en",
-		Path:   "/",
-		Router: e,
+		Title:    "Home",
+		HeadCode: "head.html",
+		Lang:     "en",
+		Path:     "/",
+		Router:   e,
+		//	Debug:    true,
 	}
 
 	home.Register(func() *liveview.ComponentDriver {
@@ -36,19 +38,9 @@ func main() {
 			button.I++
 			text := button.Driver.GetElementById("text1")
 			button.Driver.FillValue("span_result", fmt.Sprint(button.I)+" -> "+text)
-			button.Driver.EvalScript("console.log(1)")
 		}
 
-		return components.NewLayout("home", `
-		{{ mount "text1"}}
-		<div id="div_text_result"></div>
-		<div>
-			{{mount "button1"}}
-		</div>
-		<div>
-			<span id="span_result"></span>
-		</div>
-		`).Mount(text1).Mount(button1)
+		return components.NewLayout("home", "layout.html").Mount(text1).Mount(button1)
 
 	})
 

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"text/template"
 
+	"github.com/arturoeanton/gocommons/utils"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 )
@@ -17,7 +18,9 @@ type PageControl struct {
 	HeadCode string
 	Lang     string
 	Css      string
+	LiveJs   string
 	Router   *echo.Echo
+	Debug    bool
 }
 
 var (
@@ -27,7 +30,6 @@ var (
 	<head>
 		<title>{{.Title}}</title>
 		{{.HeadCode}}
-
 		<style>
 			{{.Css}}
 		</style>
@@ -36,52 +38,7 @@ var (
 		<div id="content"> 
 		</div>
 		<script>
-			var loc = window.location;
-			var uri = 'ws:';
-
-			if (loc.protocol === 'https:') {
-				uri = 'wss:';
-			}
-			uri += '//' + loc.host;
-			uri += loc.pathname + 'ws_goliveview';
-
-			ws = new WebSocket(uri)
-
-			ws.onopen = function() {
-				console.log('Connected')
-			}
-
-			ws.onmessage = function(evt) {
-				json_data = JSON.parse(evt.data)
-				var out = document.getElementById(json_data.id);
-
-				if (json_data.type == 'fill'){
-					out.innerHTML = json_data.value ;
-				}
-
-				if (json_data.type == 'set'){
-					out.value = json_data.value ;
-				}
-
-
-				if (json_data.type == 'script'){
-					eval(json_data.value);
-				}
-
-				if (json_data.type == 'get'){
-					var str = JSON.stringify({"type":"get", "id_ret": json_data.id_ret , "data":document.getElementById(json_data.id).value})
-					ws.send(str)
-				}
-
-				
-
-
-			}	
-
-			function send_event (id, event, data) {
-				var str = JSON.stringify({"type":"data","id": id, "event":event, "data":data})
-				ws.send(str)
-			}
+var loc=window.location,uri="ws:";function send_event(t,e,a){var n=JSON.stringify({type:"data",id:t,event:e,data:a});ws.send(n)}"https:"===loc.protocol&&(uri="wss:"),uri+="//"+loc.host,uri+=loc.pathname+"ws_goliveview",ws=new WebSocket(uri),ws.onopen=function(){console.log("Connected")},ws.onmessage=function(evt){json_data=JSON.parse(evt.data);var out=document.getElementById(json_data.id);if("fill"==json_data.type&&(out.innerHTML=json_data.value),"set"==json_data.type&&(out.value=json_data.value),"script"==json_data.type&&eval(json_data.value),"get"==json_data.type){var str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id).value});ws.send(str)}};
 		</script>
     </body>
 </html>
@@ -89,6 +46,15 @@ var (
 )
 
 func (pc *PageControl) Register(fx func() *ComponentDriver) {
+	if utils.Exists(pc.HeadCode) {
+		pc.HeadCode, _ = utils.FileToString(pc.HeadCode)
+	}
+	if pc.Lang == "" {
+		pc.Lang = "en"
+	}
+	if utils.Exists("live.js") {
+		pc.LiveJs, _ = utils.FileToString("live.js")
+	}
 	pc.Router.GET(pc.Path, func(c echo.Context) error {
 		t := template.Must(template.New("page_control").Parse(html))
 		buf := new(bytes.Buffer)
@@ -126,10 +92,12 @@ func (pc *PageControl) Register(fx func() *ComponentDriver) {
 		for {
 			_, msg, err := ws.ReadMessage()
 			if err != nil {
-				c.Logger().Error(err)
+				//c.Logger().Error(err)
+				return nil
 			}
-			fmt.Println(string(msg))
-
+			if pc.Debug {
+				fmt.Println(string(msg))
+			}
 			var data map[string]interface{}
 			json.Unmarshal(msg, &data)
 			if mtype, ok := data["type"]; ok {
@@ -137,14 +105,11 @@ func (pc *PageControl) Register(fx func() *ComponentDriver) {
 					param := data["data"]
 					drivers[data["id"].(string)].ExecuteEvent(data["event"].(string), param)
 				}
-
 				if mtype == "get" {
 					param := data["data"]
 					channelIn[data["id_ret"].(string)] <- param
 				}
 			}
-
 		}
-
 	})
 }

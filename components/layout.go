@@ -1,6 +1,9 @@
 package components
 
-import "github.com/arturoeanton/go-echo-live-view/liveview"
+import (
+	"github.com/arturoeanton/go-echo-live-view/liveview"
+	"github.com/arturoeanton/gocommons/utils"
+)
 
 type Layout struct {
 	Driver *liveview.ComponentDriver
@@ -8,6 +11,9 @@ type Layout struct {
 }
 
 func NewLayout(id string, html string) *liveview.ComponentDriver {
+	if utils.Exists(html) {
+		html, _ = utils.FileToString(html)
+	}
 	c := &Layout{Html: html}
 	return liveview.NewDriver(id, c)
 }
