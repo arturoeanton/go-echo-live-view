@@ -34,8 +34,8 @@ func main() {
 
 	home.Register(func() *liveview.ComponentDriver {
 
-		button1 := components.NewButton("button1", "button1")
-		text1 := components.NewInputText("text1")
+		button1 := liveview.NewDriver("button1", &components.Button{Caption: "Sum 1"})
+		text1 := liveview.NewDriver("text1", &components.InputText{})
 
 		text1.Events["KeyUp"] = func(data interface{}) {
 			text1.FillValue("div_text_result", data.(string))
@@ -49,23 +49,19 @@ func main() {
 			button.Driver.EvalScript("console.log(1)")
 		}
 
-		content := components.NewLayout("home", `
-		<div id="div_text"></div>
+		return components.NewLayout("home", `
+		{{ mount "text1"}}
 		<div id="div_text_result"></div>
 		<div>
-			<span id="span_button"></span>
+			{{mount "button1"}}
 		</div>
 		<div>
 			<span id="span_result"></span>
 		</div>
-		`)
-		content.Mount("div_text", text1)
-		content.Mount("span_button", button1)
+		`).Mount(text1).Mount(button1)
 
-		return content
 	})
 
 	e.Logger.Fatal(e.Start(":1323"))
 }
-
 ```

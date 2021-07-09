@@ -21,11 +21,10 @@ func main() {
 	}
 
 	home.Register(func() *liveview.ComponentDriver {
-		content := components.NewLayout("home", `
-		<div id="d2"></div>
-		`)
-		content.Mount("d2", components.NewClock("c1"))
-		return content
+		clock1 := liveview.NewDriver("clock1", &components.Clock{})
+		return components.NewLayout("home", `
+		<div id="d2">{{mount "clock1"}}</div>
+		`).Mount(clock1)
 	})
 
 	e.Logger.Fatal(e.Start(":1323"))

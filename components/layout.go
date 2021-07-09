@@ -3,25 +3,19 @@ package components
 import "github.com/arturoeanton/go-echo-live-view/liveview"
 
 type Layout struct {
-	driver *liveview.ComponentDriver
-	Id     string
+	Driver *liveview.ComponentDriver
 	Html   string
 }
 
 func NewLayout(id string, html string) *liveview.ComponentDriver {
-	c := &Layout{Id: id, Html: html}
-	c.driver = liveview.NewDriver(c)
-	return c.driver
+	c := &Layout{Html: html}
+	return liveview.NewDriver(id, c)
 }
 
 func (t *Layout) Start() {
-	t.driver.Commit()
+	t.Driver.Commit()
 }
 
 func (t *Layout) GetTemplate() string {
 	return t.Html
-}
-
-func (t *Layout) GetID() string {
-	return t.Id
 }

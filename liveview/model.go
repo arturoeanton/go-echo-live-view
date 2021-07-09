@@ -11,11 +11,11 @@ import (
 type Component interface {
 	GetTemplate() string
 	Start()
-	GetID() string
 }
 
 type ComponentDriver struct {
 	id                string
+	IdComponent       string
 	Component         Component
 	channel           chan (map[string]string)
 	componentsDrivers map[string]*ComponentDriver
@@ -25,7 +25,7 @@ type ComponentDriver struct {
 }
 
 func (cw *ComponentDriver) Commit() {
-	t := template.Must(template.New("component").Parse(cw.Component.GetTemplate()))
+	t := template.Must(template.New("component").Funcs(FuncMapTemplate).Parse(cw.Component.GetTemplate()))
 	buf := new(bytes.Buffer)
 	_ = t.Execute(buf, cw.Component)
 	cw.FillValue(cw.id, buf.String())
@@ -36,7 +36,7 @@ func (cw *ComponentDriver) Start(drivers *map[string]*ComponentDriver, channelIn
 	cw.channelIn = channelIn
 	cw.Component.Start()
 	cw.DriversPage = drivers
-	(*drivers)[cw.Component.GetID()] = cw
+	(*drivers)[cw.IdComponent] = cw
 	for _, c := range cw.componentsDrivers {
 		c.Start(drivers, channelIn, channel)
 	}
@@ -61,12 +61,30 @@ func (cw *ComponentDriver) SetID(id string) {
 	cw.id = id
 }
 
-func (cw *ComponentDriver) Mount(id string, componentDriver *ComponentDriver) {
+func (cw *ComponentDriver) Mount(componentDriver *ComponentDriver) *ComponentDriver {
+	id := "mount_span_" + componentDriver.IdComponent
 	componentDriver.SetID(id)
 	cw.componentsDrivers[id] = componentDriver
+	return cw
 }
 
-func NewDriver(c Component) *ComponentDriver {
+func NewDriver(id string, c Component) *ComponentDriver {
+	driver := newDriver(c)
+	driver.IdComponent = id
+	ps := reflect.ValueOf(c)
+	field := ps.Elem().FieldByName("Id")
+	if field.CanSet() {
+		field.SetString(id)
+	}
+	field = ps.Elem().FieldByName("Driver")
+	if field.CanSet() {
+		field.Set(reflect.ValueOf(driver))
+	}
+
+	return driver
+}
+
+func newDriver(c Component) *ComponentDriver {
 	driver := &ComponentDriver{Component: c}
 	driver.componentsDrivers = make(map[string]*ComponentDriver)
 	driver.Events = make(map[string]func(interface{}))
