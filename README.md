@@ -65,3 +65,20 @@ func main() {
 	e.Logger.Fatal(e.Start(":1323"))
 }
 ```
+
+![alt text](https://raw.githubusercontent.com/arturoeanton/go-echo-live-view/main/example/example2/example2.gif)
+
+
+
+## Examples 
+
+![alt text](https://raw.githubusercontent.com/arturoeanton/go-echo-live-view/main/example/example_todo/example_todo.gif)
+![alt text](https://raw.githubusercontent.com/arturoeanton/go-echo-live-view/main/example/example1/example1.gif)
+
+
+
+
+
+
+
+
