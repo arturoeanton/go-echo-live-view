@@ -2,6 +2,7 @@ package liveview
 
 import (
 	"bytes"
+	"log"
 	"reflect"
 	"text/template"
 
@@ -25,9 +26,17 @@ type ComponentDriver struct {
 }
 
 func (cw *ComponentDriver) Commit() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Println("Recovered in Commit:", r)
+		}
+	}()
 	t := template.Must(template.New("component").Funcs(FuncMapTemplate).Parse(cw.Component.GetTemplate()))
 	buf := new(bytes.Buffer)
-	_ = t.Execute(buf, cw.Component)
+	err := t.Execute(buf, cw.Component)
+	if err != nil {
+		log.Println(err)
+	}
 	cw.FillValue(cw.id, buf.String())
 }
 
@@ -92,21 +101,29 @@ func newDriver(c Component) *ComponentDriver {
 }
 
 func (cw *ComponentDriver) ExecuteEvent(name string, data interface{}) {
-	go func() {
+	if cw == nil {
+		return
+	}
+	go func(cw *ComponentDriver) {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Println("Recovered in ExecuteEvent:", r)
+			}
+		}()
 		if data == nil {
 			data = make(map[string]interface{})
 		}
 
-		if fx, ok := cw.Events[name]; ok {
-			go fx(data)
-			return
+		if cw.Events != nil {
+			if fx, ok := cw.Events[name]; ok {
+				go fx(data)
+				return
+			}
 		}
-
 		in := []reflect.Value{reflect.ValueOf(data)}
-
 		reflect.ValueOf(cw.Component).MethodByName(name).Call(in)
 
-	}()
+	}(cw)
 }
 
 func (cw *ComponentDriver) GetElementById(name string) string {
