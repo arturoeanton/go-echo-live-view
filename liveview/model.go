@@ -130,7 +130,20 @@ func (cw *ComponentDriver) GetElementById(name string) string {
 	uid := uuid.NewString()
 	(*cw.channelIn)[uid] = make(chan interface{})
 	defer delete((*cw.channelIn), uid)
-	cw.channel <- map[string]string{"type": "get", "id": name, "id_ret": uid}
+	cw.channel <- map[string]string{"type": "get", "id": name, "id_ret": uid, "sub_type": "value"}
+	data := <-(*cw.channelIn)[uid]
+	return data.(string)
+}
+
+func (cw *ComponentDriver) SetStyle(id string, style string) {
+	cw.channel <- map[string]string{"type": "style", "id": id, "value": style}
+}
+
+func (cw *ComponentDriver) GetStyle(id string, name string) string {
+	uid := uuid.NewString()
+	(*cw.channelIn)[uid] = make(chan interface{})
+	defer delete((*cw.channelIn), uid)
+	cw.channel <- map[string]string{"type": "get", "id": id, "id_ret": uid, "value": name, "sub_type": "style"}
 	data := <-(*cw.channelIn)[uid]
 	return data.(string)
 }

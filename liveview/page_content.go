@@ -38,7 +38,10 @@ var (
 		<div id="content"> 
 		</div>
 		<script>
-var loc=window.location,uri="ws:";function send_event(t,e,a){var n=JSON.stringify({type:"data",id:t,event:e,data:a});ws.send(n)}"https:"===loc.protocol&&(uri="wss:"),uri+="//"+loc.host,uri+=loc.pathname+"ws_goliveview",ws=new WebSocket(uri),ws.onopen=function(){console.log("Connected")},ws.onmessage=function(evt){json_data=JSON.parse(evt.data);var out=document.getElementById(json_data.id);if("fill"==json_data.type&&(out.innerHTML=json_data.value),"set"==json_data.type&&(out.value=json_data.value),"script"==json_data.type&&eval(json_data.value),"get"==json_data.type){var str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id).value});ws.send(str)}};
+		
+		var loc=window.location,uri="ws:";function send_event(t,e,a){var n=JSON.stringify({type:"data",id:t,event:e,data:a});ws.send(n)}"https:"===loc.protocol&&(uri="wss:"),uri+="//"+loc.host,uri+=loc.pathname+"ws_goliveview",ws=new WebSocket(uri),ws.onopen=function(){console.log("Connected")},ws.onmessage=function(evt){json_data=JSON.parse(evt.data);var out=document.getElementById(json_data.id);if("fill"==json_data.type&&(out.innerHTML=json_data.value),"style"==json_data.type&&(out.style.cssText=json_data.value),"set"==json_data.type&&(out.value=json_data.value),"script"==json_data.type&&eval(json_data.value),"get"==json_data.type){if(""==json_data.sub_type)var str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id).style(json.value)});var str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id).value});ws.send(str)}};
+		
+
 		</script>
     </body>
 </html>

@@ -21,6 +21,10 @@ ws.onmessage = function (evt) {
         out.innerHTML = json_data.value;
     }
 
+    if (json_data.type == 'style') {
+        out.style.cssText = json_data.value
+    }
+
     if (json_data.type == 'set') {
         out.value = json_data.value;
     }
@@ -31,6 +35,9 @@ ws.onmessage = function (evt) {
     }
 
     if (json_data.type == 'get') {
+        if (json_data.sub_type == '') {
+            var str = JSON.stringify({ "type": "get", "id_ret": json_data.id_ret, "data": document.getElementById(json_data.id).style(json.value) })
+        }
         var str = JSON.stringify({ "type": "get", "id_ret": json_data.id_ret, "data": document.getElementById(json_data.id).value })
         ws.send(str)
     }
