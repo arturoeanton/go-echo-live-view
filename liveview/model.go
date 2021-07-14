@@ -77,8 +77,9 @@ func (cw *ComponentDriver) Mount(componentDriver *ComponentDriver) *ComponentDri
 }
 
 // Mount mount component in other component
-func (cw *ComponentDriver) MountWithStart(componentDriver *ComponentDriver) *ComponentDriver {
-	cw.Mount(componentDriver)
+func (cw *ComponentDriver) MountWithStart(id string, componentDriver *ComponentDriver) *ComponentDriver {
+	componentDriver.SetID(id)
+	cw.componentsDrivers[id] = componentDriver
 	componentDriver.Start(cw.DriversPage, cw.channelIn, cw.channel)
 	return cw
 }
