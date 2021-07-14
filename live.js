@@ -21,6 +21,10 @@ ws.onmessage = function (evt) {
         out.innerHTML = json_data.value;
     }
 
+    if (json_data.type == 'remove') {
+        out.remove()
+    }
+
     if (json_data.type == 'text') {
         out.innerText = json_data.value;
     }

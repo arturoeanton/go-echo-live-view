@@ -135,6 +135,11 @@ func (cw *ComponentDriver) ExecuteEvent(name string, data interface{}) {
 	}(cw)
 }
 
+//Remove
+func (cw *ComponentDriver) Remove(id string) {
+	cw.channel <- map[string]interface{}{"type": "remove", "id": id}
+}
+
 //FillValue is same SetHTML
 func (cw *ComponentDriver) FillValue(id string, value string) {
 	cw.channel <- map[string]interface{}{"type": "fill", "id": id, "value": value}
