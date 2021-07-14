@@ -25,6 +25,7 @@ The idea was stolen from  https://github.com/brendonmatos/golive
 | `SetStyle` | document.getElementById("$id").style.cssText = $style |
 
 
+
 ## Example 
 
 ```golang
@@ -89,8 +90,17 @@ func main() {
 ![alt text](https://raw.githubusercontent.com/arturoeanton/go-echo-live-view/main/example/example2/example2.gif)
 
 
+## Interface Component
 
-## Examples 
+```golang
+type Component interface {
+	GetTemplate() string
+	Start()
+}
+```
+
+
+## More Examples 
 
 ### example_todo
 ![alt text](https://raw.githubusercontent.com/arturoeanton/go-echo-live-view/main/example/example_todo/example_todo.gif)
