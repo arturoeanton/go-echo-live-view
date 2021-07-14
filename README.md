@@ -10,6 +10,7 @@ The idea was stolen from  https://github.com/brendonmatos/golive
 
 | Method | Description |
 | --- | --- |
+| `Remove` | return document.getElementById("$id").remove() |
 | `GetHTML` | return document.getElementById("$id").innerHTML |
 | `GetText` | return document.getElementById("$id").innerText |
 | `GetPropertie` | return document.getElementById("$id")[$propertie] |
