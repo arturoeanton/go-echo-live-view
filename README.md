@@ -5,6 +5,26 @@ Little POC for test the idea  of Phoenix LiveView in Go and Echo (https://github
 The idea was stolen from  https://github.com/brendonmatos/golive 
 
 
+
+## Driver Methods
+
+| Method | Description |
+| --- | --- |
+| `GetHTML` | return document.getElementById("$id").innerHTML |
+| `GetText` | return document.getElementById("$id").innerText |
+| `GetPropertie` | return document.getElementById("$id")[$propertie] |
+| `GetValue` | return document.getElementById("$id").value |
+| `GetStyle` | return document.getElementById("$id").style["$propertie"] |
+| `GetElementById` | return document.getElementById("$id").value |
+| `EvalScript` | execute  eval($code);|
+| `FillValue` | document.getElementById("$id").innerHTML = $value |
+| `SetHTML` | document.getElementById("$id").innerHTML = $value |
+| `SetText` | document.getElementById("$id").innerText = $value|
+| `SetPropertie` | document.getElementById("$id")[$propertie] = $value |
+| `SetValue` | document.getElementById("$id").value = $value|
+| `SetStyle` | document.getElementById("$id").style.cssText = $style |
+
+
 ## Example 
 
 ```golang

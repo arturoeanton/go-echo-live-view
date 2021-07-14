@@ -38,17 +38,30 @@ func main() {
 			button.Driver.FillValue("span_result", fmt.Sprint(button.I)+" -> "+text)
 			button.Driver.EvalScript("console.log(1)")
 		}
+		button2 := liveview.NewDriver("button2", &components.Button{Caption: "Change ReadOnly"})
+		button2.Events["Click"] = func(data interface{}) {
+			button := button2.Component.(*components.Button)
+			text := button.Driver.GetPropertie("text1", "readOnly")
+			if text == "true" {
+				button.Driver.SetPropertie("text1", "readOnly", false)
+			} else {
+				button.Driver.SetPropertie("text1", "readOnly", true)
+			}
+			text = button.Driver.GetPropertie("text1", "readOnly")
+			button.Driver.SetText("span_result", "ReadOnly of text1 is "+text)
+		}
 
 		return components.NewLayout("home", `
 		{{ mount "text1"}}
 		<div id="div_text_result"></div>
 		<div>
+			{{mount "button2"}}
 			{{mount "button1"}}
 		</div>
 		<div>
 			<span id="span_result"></span>
 		</div>
-		`).Mount(text1).Mount(button1)
+		`).Mount(text1).Mount(button1).Mount(button2)
 
 	})
 

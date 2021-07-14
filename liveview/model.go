@@ -2,6 +2,7 @@ package liveview
 
 import (
 	"bytes"
+	"fmt"
 	"log"
 	"reflect"
 	"text/template"
@@ -18,7 +19,7 @@ type ComponentDriver struct {
 	id                string
 	IdComponent       string
 	Component         Component
-	channel           chan (map[string]string)
+	channel           chan (map[string]interface{})
 	componentsDrivers map[string]*ComponentDriver
 	DriversPage       *map[string]*ComponentDriver
 	channelIn         *map[string]chan interface{}
@@ -40,7 +41,7 @@ func (cw *ComponentDriver) Commit() {
 	cw.FillValue(cw.id, buf.String())
 }
 
-func (cw *ComponentDriver) Start(drivers *map[string]*ComponentDriver, channelIn *map[string]chan interface{}, channel chan (map[string]string)) {
+func (cw *ComponentDriver) Start(drivers *map[string]*ComponentDriver, channelIn *map[string]chan interface{}, channel chan (map[string]interface{})) {
 	cw.channel = channel
 	cw.channelIn = channelIn
 	cw.Component.Start()
@@ -49,17 +50,6 @@ func (cw *ComponentDriver) Start(drivers *map[string]*ComponentDriver, channelIn
 	for _, c := range cw.componentsDrivers {
 		c.Start(drivers, channelIn, channel)
 	}
-}
-
-func (cw *ComponentDriver) FillValue(id string, data string) {
-	cw.channel <- map[string]string{"type": "fill", "id": id, "value": data}
-}
-
-func (cw *ComponentDriver) SetValue(id string, data string) {
-	cw.channel <- map[string]string{"type": "set", "id": id, "value": data}
-}
-func (cw *ComponentDriver) EvalScript(data string) {
-	cw.channel <- map[string]string{"type": "script", "value": data}
 }
 
 func (cw *ComponentDriver) GetID() string {
@@ -126,24 +116,65 @@ func (cw *ComponentDriver) ExecuteEvent(name string, data interface{}) {
 	}(cw)
 }
 
-func (cw *ComponentDriver) GetElementById(name string) string {
-	uid := uuid.NewString()
-	(*cw.channelIn)[uid] = make(chan interface{})
-	defer delete((*cw.channelIn), uid)
-	cw.channel <- map[string]string{"type": "get", "id": name, "id_ret": uid, "sub_type": "value"}
-	data := <-(*cw.channelIn)[uid]
-	return data.(string)
+func (cw *ComponentDriver) FillValue(id string, value string) {
+	cw.channel <- map[string]interface{}{"type": "fill", "id": id, "value": value}
+}
+
+func (cw *ComponentDriver) SetHTML(id string, value string) {
+	cw.channel <- map[string]interface{}{"type": "fill", "id": id, "value": value}
+}
+
+func (cw *ComponentDriver) SetText(id string, value string) {
+	cw.channel <- map[string]interface{}{"type": "text", "id": id, "value": value}
+}
+
+func (cw *ComponentDriver) SetPropertie(id string, propertie string, value interface{}) {
+	cw.channel <- map[string]interface{}{"type": "propertie", "id": id, "propertie": propertie, "value": value}
+}
+
+func (cw *ComponentDriver) SetValue(id string, value interface{}) {
+	cw.channel <- map[string]interface{}{"type": "set", "id": id, "value": value}
+}
+func (cw *ComponentDriver) EvalScript(code string) {
+	cw.channel <- map[string]interface{}{"type": "script", "value": code}
 }
 
 func (cw *ComponentDriver) SetStyle(id string, style string) {
-	cw.channel <- map[string]string{"type": "style", "id": id, "value": style}
+	cw.channel <- map[string]interface{}{"type": "style", "id": id, "value": style}
 }
 
-func (cw *ComponentDriver) GetStyle(id string, name string) string {
+func (cw *ComponentDriver) GetElementById(id string) string {
+	return cw.get(id, "value", "")
+}
+
+func (cw *ComponentDriver) GetValue(id string) string {
+	return cw.get(id, "value", "")
+}
+
+func (cw *ComponentDriver) GetStyle(id string, propertie string) string {
+	return cw.get(id, "style", propertie)
+}
+
+func (cw *ComponentDriver) GetHTML(id string) string {
+	return cw.get(id, "html", "")
+}
+
+func (cw *ComponentDriver) GetText(id string) string {
+	return cw.get(id, "text", "")
+}
+
+func (cw *ComponentDriver) GetPropertie(id string, name string) string {
+	return cw.get(id, "propertie", name)
+}
+
+func (cw *ComponentDriver) get(id string, subType string, value string) string {
 	uid := uuid.NewString()
 	(*cw.channelIn)[uid] = make(chan interface{})
 	defer delete((*cw.channelIn), uid)
-	cw.channel <- map[string]string{"type": "get", "id": id, "id_ret": uid, "value": name, "sub_type": "style"}
+	cw.channel <- map[string]interface{}{"type": "get", "id": id, "value": value, "id_ret": uid, "sub_type": subType}
 	data := <-(*cw.channelIn)[uid]
-	return data.(string)
+	if data != nil {
+		return fmt.Sprint(data)
+	}
+	return ""
 }

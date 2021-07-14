@@ -21,6 +21,14 @@ ws.onmessage = function (evt) {
         out.innerHTML = json_data.value;
     }
 
+    if (json_data.type == 'text') {
+        out.innerText = json_data.value;
+    }
+
+    if (json_data.type == 'propertie') {
+        out[json_data.propertie] = json_data.value;
+    }
+
     if (json_data.type == 'style') {
         out.style.cssText = json_data.value
     }
@@ -47,6 +55,9 @@ ws.onmessage = function (evt) {
         }
         if  (json_data.sub_type == 'text') {
             str = JSON.stringify({ "type": "get", "id_ret": json_data.id_ret, "data": document.getElementById(json_data.id).innerHTML })
+        }
+        if  (json_data.sub_type == 'propertie') {
+            str = JSON.stringify({ "type": "get", "id_ret": json_data.id_ret, "data": document.getElementById(json_data.id)[json_data.value] })
         }
         ws.send(str)
     }
