@@ -76,6 +76,13 @@ func (cw *ComponentDriver) Mount(componentDriver *ComponentDriver) *ComponentDri
 	return cw
 }
 
+// Mount mount component in other component
+func (cw *ComponentDriver) MountWithStart(componentDriver *ComponentDriver) *ComponentDriver {
+	cw.Mount(componentDriver)
+	componentDriver.Start(cw.DriversPage, cw.channelIn, cw.channel)
+	return cw
+}
+
 // Create Driver with component
 func NewDriver(id string, c Component) *ComponentDriver {
 	driver := newDriver(c)
