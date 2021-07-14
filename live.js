@@ -43,27 +43,56 @@ ws.onmessage = function (evt) {
     }
 
     if (json_data.type == 'get') {
-        str = JSON.stringify({ "type": "get", "id_ret": json_data.id_ret, "data": null })
+        str = JSON.stringify({
+            "type": "get",
+            "id_ret": json_data.id_ret,
+            "data": null
+        })
         if (json_data.sub_type == 'style') {
-            str = JSON.stringify({ "type": "get", "id_ret": json_data.id_ret, "data": document.getElementById(json_data.id).style[json_data.value] })
+            str = JSON.stringify({
+                "type": "get",
+                "id_ret": json_data.id_ret,
+                "data": document.getElementById(json_data.id).style[json_data.value]
+            })
         }
-        if  (json_data.sub_type == 'value') {
-            str = JSON.stringify({ "type": "get", "id_ret": json_data.id_ret, "data": document.getElementById(json_data.id).value })
+        if (json_data.sub_type == 'value') {
+            str = JSON.stringify({
+                "type": "get",
+                "id_ret": json_data.id_ret,
+                "data": document.getElementById(json_data.id).value
+            })
         }
-        if  (json_data.sub_type == 'html') {
-            str = JSON.stringify({ "type": "get", "id_ret": json_data.id_ret, "data": document.getElementById(json_data.id).innerHTML })
+        if (json_data.sub_type == 'html') {
+            str = JSON.stringify({
+                "type": "get",
+                "id_ret": json_data.id_ret,
+                "data": document.getElementById(json_data.id).innerHTML
+            })
         }
-        if  (json_data.sub_type == 'text') {
-            str = JSON.stringify({ "type": "get", "id_ret": json_data.id_ret, "data": document.getElementById(json_data.id).innerHTML })
+        if (json_data.sub_type == 'text') {
+            str = JSON.stringify({
+                "type": "get",
+                "id_ret": json_data.id_ret,
+                "data": document.getElementById(json_data.id).innerHTML
+            })
         }
-        if  (json_data.sub_type == 'propertie') {
-            str = JSON.stringify({ "type": "get", "id_ret": json_data.id_ret, "data": document.getElementById(json_data.id)[json_data.value] })
+        if (json_data.sub_type == 'propertie') {
+            str = JSON.stringify({
+                "type": "get",
+                "id_ret": json_data.id_ret,
+                "data": document.getElementById(json_data.id)[json_data.value]
+            })
         }
         ws.send(str)
     }
 }
 
 function send_event(id, event, data) {
-    var str = JSON.stringify({ "type": "data", "id": id, "event": event, "data": data })
+    var str = JSON.stringify({
+        "type": "data",
+        "id": id,
+        "event": event,
+        "data": data
+    })
     ws.send(str)
 }

@@ -45,6 +45,7 @@ var (
 `
 )
 
+//Register this method to register in router of Echo page and websocket
 func (pc *PageControl) Register(fx func() *ComponentDriver) {
 	if utils.Exists(pc.HeadCode) {
 		pc.HeadCode, _ = utils.FileToString(pc.HeadCode)
