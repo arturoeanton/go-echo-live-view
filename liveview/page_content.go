@@ -19,7 +19,7 @@ type PageControl struct {
 	Lang     string
 	Css      string
 	LiveJs   string
-	AfeterCode string
+	AfterCode string
 	Router   *echo.Echo
 	Debug    bool
 }
