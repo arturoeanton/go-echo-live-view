@@ -19,6 +19,7 @@ type PageControl struct {
 	Lang     string
 	Css      string
 	LiveJs   string
+	AfeterCode string
 	Router   *echo.Echo
 	Debug    bool
 }
@@ -40,6 +41,7 @@ var (
 		<script>
 		var loc=window.location,uri="ws:";function send_event(t,e,a){var n=JSON.stringify({type:"data",id:t,event:e,data:a});ws.send(n)}"https:"===loc.protocol&&(uri="wss:"),uri+="//"+loc.host,uri+=loc.pathname+"ws_goliveview",ws=new WebSocket(uri),ws.onopen=function(){console.log("Connected")},ws.onmessage=function(evt){json_data=JSON.parse(evt.data);var out=document.getElementById(json_data.id);"fill"==json_data.type&&(out.innerHTML=json_data.value),"remove"==json_data.type&&out.remove(),"text"==json_data.type&&(out.innerText=json_data.value),"propertie"==json_data.type&&(out[json_data.propertie]=json_data.value),"style"==json_data.type&&(out.style.cssText=json_data.value),"set"==json_data.type&&(out.value=json_data.value),"script"==json_data.type&&eval(json_data.value),"get"==json_data.type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:null}),"style"==json_data.sub_type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id).style[json_data.value]})),"value"==json_data.sub_type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id).value})),"html"==json_data.sub_type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id).innerHTML})),"text"==json_data.sub_type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id).innerHTML})),"propertie"==json_data.sub_type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id)[json_data.value]})),ws.send(str))};
 		</script>
+		{{.AfterCode}}
     </body>
 </html>
 `
@@ -47,6 +49,9 @@ var (
 
 //Register this method to register in router of Echo page and websocket
 func (pc *PageControl) Register(fx func() *ComponentDriver) {
+	if utils.Exists(pc.AfterCode) {
+		pc.AfterCode, _ = utils.FileToString(pc.AfterCode)
+	}
 	if utils.Exists(pc.HeadCode) {
 		pc.HeadCode, _ = utils.FileToString(pc.HeadCode)
 	}
