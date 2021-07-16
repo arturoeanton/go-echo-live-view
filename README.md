@@ -100,6 +100,17 @@ type Component interface {
 }
 ```
 
+## Example go-notebook
+
+https://github.com/arturoeanton/go-notebook
+
+
+![alt text](https://raw.githubusercontent.com/arturoeanton/go-notebook/main/gonote1.gif)
+
+![alt text](https://raw.githubusercontent.com/arturoeanton/go-notebook/main/gonote2.gif)
+
+
+
 
 ## More Examples 
 
