@@ -109,7 +109,7 @@ https://github.com/arturoeanton/go-notebook
 
 ![alt text](https://raw.githubusercontent.com/arturoeanton/go-notebook/main/gonote2.gif)
 
-![alt text](https://raw.githubusercontent.com/arturoeanton/go-notebook/main/gonote3.gif)
+![alt text](https://raw.githubusercontent.com/arturoeanton/go-notebook/main/gonote3.png)
 
 
 
