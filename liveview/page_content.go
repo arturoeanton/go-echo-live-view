@@ -13,15 +13,15 @@ import (
 )
 
 type PageControl struct {
-	Path     string
-	Title    string
-	HeadCode string
-	Lang     string
-	Css      string
-	LiveJs   string
+	Path      string
+	Title     string
+	HeadCode  string
+	Lang      string
+	Css       string
+	LiveJs    string
 	AfterCode string
-	Router   *echo.Echo
-	Debug    bool
+	Router    *echo.Echo
+	Debug     bool
 }
 
 var (
@@ -39,8 +39,7 @@ var (
 		<div id="content"> 
 		</div>
 		<script>
-		var loc=window.location,uri="ws:";function send_event(t,e,a){var n=JSON.stringify({type:"data",id:t,event:e,data:a});ws.send(n)}"https:"===loc.protocol&&(uri="wss:"),uri+="//"+loc.host,uri+=loc.pathname+"ws_goliveview",ws=new WebSocket(uri),ws.onopen=function(){console.log("Connected")},ws.onmessage=function(evt){json_data=JSON.parse(evt.data);var out=document.getElementById(json_data.id);"fill"==json_data.type&&(out.innerHTML=json_data.value),"remove"==json_data.type&&out.remove(),"text"==json_data.type&&(out.innerText=json_data.value),"propertie"==json_data.type&&(out[json_data.propertie]=json_data.value),"style"==json_data.type&&(out.style.cssText=json_data.value),"set"==json_data.type&&(out.value=json_data.value),"script"==json_data.type&&eval(json_data.value),"get"==json_data.type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:null}),"style"==json_data.sub_type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id).style[json_data.value]})),"value"==json_data.sub_type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id).value})),"html"==json_data.sub_type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id).innerHTML})),"text"==json_data.sub_type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id).innerHTML})),"propertie"==json_data.sub_type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id)[json_data.value]})),ws.send(str))};
-		</script>
+		var loc=window.location,uri="ws:";function send_event(t,e,a){var d=JSON.stringify({type:"data",id:t,event:e,data:a});ws.send(d)}"https:"===loc.protocol&&(uri="wss:"),uri+="//"+loc.host,uri+=loc.pathname+"ws_goliveview",ws=new WebSocket(uri),ws.onopen=function(){console.log("Connected")},ws.onmessage=function(evt){json_data=JSON.parse(evt.data);var out=document.getElementById(json_data.id);if("fill"==json_data.type&&(out.innerHTML=json_data.value),"remove"==json_data.type&&out.remove(),"addNode"==json_data.type){var d=document.createElement("<div></div>");d.innerHTML=json_data.value,out.appendChild(d)}"text"==json_data.type&&(out.innerText=json_data.value),"propertie"==json_data.type&&(out[json_data.propertie]=json_data.value),"style"==json_data.type&&(out.style.cssText=json_data.value),"set"==json_data.type&&(out.value=json_data.value),"script"==json_data.type&&eval(json_data.value),"get"==json_data.type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:null}),"style"==json_data.sub_type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id).style[json_data.value]})),"value"==json_data.sub_type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id).value})),"html"==json_data.sub_type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id).innerHTML})),"text"==json_data.sub_type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id).innerHTML})),"propertie"==json_data.sub_type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id)[json_data.value]})),ws.send(str))};		</script>
 		{{.AfterCode}}
     </body>
 </html>

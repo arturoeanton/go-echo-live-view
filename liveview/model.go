@@ -140,6 +140,11 @@ func (cw *ComponentDriver) Remove(id string) {
 	cw.channel <- map[string]interface{}{"type": "remove", "id": id}
 }
 
+//AddNode add node to id
+func (cw *ComponentDriver) AddValue(id string, value string) {
+	cw.channel <- map[string]interface{}{"type": "addNode", "id": id, "value": value}
+}
+
 //FillValue is same SetHTML
 func (cw *ComponentDriver) FillValue(id string, value string) {
 	cw.channel <- map[string]interface{}{"type": "fill", "id": id, "value": value}

@@ -25,6 +25,12 @@ ws.onmessage = function (evt) {
         out.remove()
     }
 
+    if (json_data.type == 'addNode') {
+        var d = document.createElement("<div></div>")
+        d.innerHTML = json_data.value;
+        out.appendChild(d)
+    }
+
     if (json_data.type == 'text') {
         out.innerText = json_data.value;
     }
