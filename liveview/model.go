@@ -141,7 +141,7 @@ func (cw *ComponentDriver) Remove(id string) {
 }
 
 //AddNode add node to id
-func (cw *ComponentDriver) AddValue(id string, value string) {
+func (cw *ComponentDriver) AddNode(id string, value string) {
 	cw.channel <- map[string]interface{}{"type": "addNode", "id": id, "value": value}
 }
 
