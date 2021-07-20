@@ -26,7 +26,7 @@ ws.onmessage = function (evt) {
     }
 
     if (json_data.type == 'addNode') {
-        var d = document.createElement("<div></div>")
+        var d = document.createElement("div")
         d.innerHTML = json_data.value;
         out.appendChild(d)
     }
