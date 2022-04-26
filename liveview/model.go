@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"sync"
 	"text/template"
 
 	"github.com/google/uuid"
@@ -98,9 +99,15 @@ func (cw *ComponentDriver[T]) StartDriver(drivers *map[string]LiveDriver, channe
 	cw.Component.Start()
 	cw.DriversPage = drivers
 	(*drivers)[cw.GetIDComponet()] = cw
+	var wg sync.WaitGroup
 	for _, c := range cw.componentsDrivers {
-		c.StartDriver(drivers, channelIn, channel)
+		wg.Add(1)
+		go func(c LiveDriver) {
+			defer wg.Done()
+			c.StartDriver(drivers, channelIn, channel)
+		}(c)
 	}
+	wg.Wait()
 }
 
 // GetID return id of driver
