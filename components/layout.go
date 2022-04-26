@@ -6,20 +6,24 @@ import (
 )
 
 type Layout struct {
-	Driver *liveview.ComponentDriver
-	Html   string
+	*liveview.ComponentDriver[*Layout]
+	Html string
 }
 
-func NewLayout(id string, html string) *liveview.ComponentDriver {
+func (t *Layout) GetDriver() liveview.LiveDriver {
+	return t
+}
+func NewLayout(id string, html string) *liveview.ComponentDriver[*Layout] {
 	if utils.Exists(html) {
 		html, _ = utils.FileToString(html)
 	}
 	c := &Layout{Html: html}
-	return liveview.NewDriver(id, c)
+	c.ComponentDriver = liveview.NewDriver(id, c)
+	return c.ComponentDriver
 }
 
 func (t *Layout) Start() {
-	t.Driver.Commit()
+	t.Commit()
 }
 
 func (t *Layout) GetTemplate() string {

@@ -17,7 +17,7 @@ Task: <input id="new_name" type="text" /> <select id="new_state">
             {{ range $key, $value := .Tasks }}
             <tr id="{{$key}}">
                 <td>
-                    <button type="button" onclick="send_event('todo','Remove', '{{$key}}')">Remove</button>
+                    <button type="button" onclick="send_event('todo','RemoveTask', '{{$key}}')">Remove</button>
                 </td>
                 <td> <input type="text" value="{{ $value.Name }}" id="name_{{$key}}"
                         onchange="send_event('todo','Change', '{{$key}}')" /></td>

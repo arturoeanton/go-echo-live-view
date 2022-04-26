@@ -19,29 +19,33 @@ type Task struct {
 }
 
 type Todo struct {
-	Driver     *liveview.ComponentDriver
+	*liveview.ComponentDriver[*Todo]
 	ActualTime string
 	code       string
 	Tasks      map[string]Task
 }
 
+func (t *Todo) GetDriver() liveview.LiveDriver {
+	return t
+}
+
 func (t *Todo) Start() {
-	tasksString, _ := utils.FileToString("tasks.json")
+	tasksString, _ := utils.FileToString("example/example_todo/tasks.json")
 	t.Tasks = make(map[string]Task)
 	json.Unmarshal([]byte(tasksString), &(t.Tasks))
-	t.Driver.Commit()
+	t.Commit()
 }
 
 func (t *Todo) GetTemplate() string {
 	if t.code == "" {
-		t.code, _ = utils.FileToString("todo.html")
+		t.code, _ = utils.FileToString("example/example_todo/todo.html")
 	}
 	return t.code
 }
 
 func (t *Todo) Add(data interface{}) {
-	name := t.Driver.GetElementById("new_name")
-	stateStr := t.Driver.GetElementById("new_state")
+	name := t.GetElementById("new_name")
+	stateStr := t.GetElementById("new_state")
 	state, _ := strconv.Atoi(stateStr)
 	id := uuid.NewString()
 	task := Task{
@@ -51,21 +55,21 @@ func (t *Todo) Add(data interface{}) {
 	t.Tasks[id] = task
 	content, _ := json.Marshal(t.Tasks)
 	utils.StringToFile("tasks.json", string(content))
-	t.Driver.Commit()
+	t.Commit()
 }
 
-func (t *Todo) Remove(data interface{}) {
+func (t *Todo) RemoveTask(data interface{}) {
 	id := data.(string)
 	delete(t.Tasks, id)
 	content, _ := json.Marshal(t.Tasks)
 	utils.StringToFile("tasks.json", string(content))
-	t.Driver.Commit()
+	t.Commit()
 }
 
 func (t *Todo) Change(data interface{}) {
 	id := data.(string)
-	name := t.Driver.GetElementById("name_" + id)
-	stateStr := t.Driver.GetElementById("state_" + id)
+	name := t.GetElementById("name_" + id)
+	stateStr := t.GetElementById("state_" + id)
 	state, _ := strconv.Atoi(stateStr)
 	task := Task{
 		Name:  &name,
@@ -74,7 +78,7 @@ func (t *Todo) Change(data interface{}) {
 	t.Tasks[id] = task
 	content, _ := json.Marshal(t.Tasks)
 	utils.StringToFile("tasks.json", string(content))
-	t.Driver.Commit()
+	t.Commit()
 }
 
 func main() {
@@ -83,16 +87,16 @@ func main() {
 	e.Use(middleware.Recover())
 
 	home := liveview.PageControl{
-		Title:    "Home",
-		HeadCode: "head.html",
+		Title:    "Todo",
+		HeadCode: "example/example_todo/head.html",
 		Lang:     "en",
 		Path:     "/",
 		Router:   e,
 		//	Debug:    true,
 	}
-	home.Register(func() *liveview.ComponentDriver {
-		todo := liveview.NewDriver("todo", &Todo{})
-		return components.NewLayout("home", `<div> {{mount "todo"}} </div>`).Mount(todo)
+	home.Register(func() liveview.LiveDriver {
+		liveview.New("todo", &Todo{})
+		return components.NewLayout("home", `<div> {{mount "todo"}} </div>`)
 	})
 	e.Logger.Fatal(e.Start(":1323"))
 }

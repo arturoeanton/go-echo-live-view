@@ -1,0 +1,15 @@
+name: example
+include: 
+  - .
+exclude:
+  - txt
+  - md
+commands:
+  command: go run example/example2/example2.go
+  terminate: killall example
+extensions:
+  - go
+  - html
+  - txt
+log: true
+version: true

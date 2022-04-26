@@ -7,15 +7,18 @@ import (
 )
 
 type Clock struct {
-	Driver     *liveview.ComponentDriver
+	*liveview.ComponentDriver[*Clock]
 	ActualTime string
 }
 
+func (t *Clock) GetDriver() liveview.LiveDriver {
+	return t
+}
 func (t *Clock) Start() {
 	go func() {
 		for {
 			t.ActualTime = time.Now().Format(time.RFC3339Nano)
-			t.Driver.Commit()
+			t.Commit()
 			time.Sleep((time.Second * 1) / 60)
 		}
 	}()
@@ -23,7 +26,7 @@ func (t *Clock) Start() {
 
 func (t *Clock) GetTemplate() string {
 	return `
-		<div  id="{{.Driver.IdComponent}}"  >
+		<div  id="{{.IdComponent}}"  >
 			<span>Time: {{ .ActualTime }}</span>
 		</div>
 	`

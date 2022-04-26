@@ -16,32 +16,30 @@ func main() {
 	e.Use(middleware.Recover())
 
 	home := liveview.PageControl{
-		Title:    "Home",
-		HeadCode: "head.html",
+		Title:    "Example3",
+		HeadCode: "example/example3/head.html",
 		Lang:     "en",
 		Path:     "/",
 		Router:   e,
 		//	Debug:    true,
 	}
 
-	home.Register(func() *liveview.ComponentDriver {
+	home.Register(func() liveview.LiveDriver {
+		document := components.NewLayout("home", "example/example3/layout.html")
+		liveview.New("span_result", &liveview.None{})
+		liveview.New("div_text_result", &liveview.None{})
+		liveview.New("text1", &components.InputText{}).SetKeyUp(func(text1 *components.InputText, data interface{}) {
+			divTextResult := document.GetDriverById("div_text_result")
+			divTextResult.FillValue(text1.GetValue())
+		})
 
-		button1 := liveview.NewDriver("button1", &components.Button{Caption: "Sum 1"})
-		text1 := liveview.NewDriver("text1", &components.InputText{})
-
-		text1.Events["KeyUp"] = func(data interface{}) {
-			text1.FillValue("div_text_result", data.(string))
-		}
-
-		button1.Events["Click"] = func(data interface{}) {
-			button := button1.Component.(*components.Button)
-			button.I++
-			text := button.Driver.GetElementById("text1")
-			button.Driver.FillValue("span_result", fmt.Sprint(button.I)+" -> "+text)
-		}
-
-		return components.NewLayout("home", "layout.html").Mount(text1).Mount(button1)
-
+		liveview.New("button1", &components.Button{Caption: "Sum 1"}).SetClick(func(button1 *components.Button, data interface{}) {
+			button1.I++
+			spanResult := document.GetDriverById("span_result")
+			text1 := document.GetDriverById("text1")
+			spanResult.FillValue(fmt.Sprint(button1.I) + " -> " + text1.GetValue())
+		})
+		return document
 	})
 
 	e.Logger.Fatal(e.Start(":1323"))

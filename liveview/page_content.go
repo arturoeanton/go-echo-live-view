@@ -39,8 +39,118 @@ var (
 		<div id="content"> 
 		</div>
 		<script>
-		var loc=window.location,uri="ws:";function send_event(t,e,a){var d=JSON.stringify({type:"data",id:t,event:e,data:a});ws.send(d)}"https:"===loc.protocol&&(uri="wss:"),uri+="//"+loc.host,uri+=loc.pathname+"ws_goliveview",ws=new WebSocket(uri),ws.onopen=function(){console.log("Connected")},ws.onmessage=function(evt){json_data=JSON.parse(evt.data);var out=document.getElementById(json_data.id);if("fill"==json_data.type&&(out.innerHTML=json_data.value),"remove"==json_data.type&&out.remove(),"addNode"==json_data.type){var d=document.createElement("div");d.innerHTML=json_data.value,out.appendChild(d)}"text"==json_data.type&&(out.innerText=json_data.value),"propertie"==json_data.type&&(out[json_data.propertie]=json_data.value),"style"==json_data.type&&(out.style.cssText=json_data.value),"set"==json_data.type&&(out.value=json_data.value),"script"==json_data.type&&eval(json_data.value),"get"==json_data.type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:null}),"style"==json_data.sub_type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id).style[json_data.value]})),"value"==json_data.sub_type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id).value})),"html"==json_data.sub_type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id).innerHTML})),"text"==json_data.sub_type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id).innerHTML})),"propertie"==json_data.sub_type&&(str=JSON.stringify({type:"get",id_ret:json_data.id_ret,data:document.getElementById(json_data.id)[json_data.value]})),ws.send(str))};
-		</script>
+		var loc = window.location;
+		var uri = "ws:";
+		
+		if (loc.protocol === "https:") {
+			uri = "wss:";
+		}
+		uri += "//" + loc.host;
+		uri += loc.pathname + "ws_goliveview";
+		
+		ws = new WebSocket(uri);
+		
+		ws.onopen = function () {
+			console.log("Connected");
+		};
+		
+		ws.onmessage = function (evt) {
+			json_data = JSON.parse(evt.data);
+			var out = document.getElementById(json_data.id);
+		
+			if (json_data.type == "fill") {
+				try{
+				out.innerHTML = json_data.value;
+				}catch(e){
+					console.log(out);
+					console.log(json_data.id);
+				}
+			}
+		
+			if (json_data.type == "remove") {
+				out.remove();
+			}
+		
+			if (json_data.type == "addNode") {
+				var d = document.createElement("div");
+				d.innerHTML = json_data.value;
+				out.appendChild(d);
+			}
+		
+			if (json_data.type == "text") {
+				out.innerText = json_data.value;
+			}
+		
+			if (json_data.type == "propertie") {
+				out[json_data.propertie] = json_data.value;
+			}
+		
+			if (json_data.type == "style") {
+				out.style.cssText = json_data.value;
+			}
+		
+			if (json_data.type == "set") {
+				out.value = json_data.value;
+			}
+		
+			if (json_data.type == "script") {
+				eval(json_data.value);
+			}
+		
+			if (json_data.type == "get") {
+				str = JSON.stringify({
+					type: "get",
+					id_ret: json_data.id_ret,
+					data: null,
+				});
+				if (json_data.sub_type == "style") {
+					str = JSON.stringify({
+						type: "get",
+						id_ret: json_data.id_ret,
+						data: document.getElementById(json_data.id).style[json_data.value],
+					});
+				}
+				if (json_data.sub_type == "value") {
+					str = JSON.stringify({
+						type: "get",
+						id_ret: json_data.id_ret,
+						data: document.getElementById(json_data.id).value,
+					});
+				}
+				if (json_data.sub_type == "html") {
+					str = JSON.stringify({
+						type: "get",
+						id_ret: json_data.id_ret,
+						data: document.getElementById(json_data.id).innerHTML,
+					});
+				}
+				if (json_data.sub_type == "text") {
+					str = JSON.stringify({
+						type: "get",
+						id_ret: json_data.id_ret,
+						data: document.getElementById(json_data.id).innerHTML,
+					});
+				}
+				if (json_data.sub_type == "propertie") {
+					str = JSON.stringify({
+						type: "get",
+						id_ret: json_data.id_ret,
+						data: document.getElementById(json_data.id)[json_data.value],
+					});
+				}
+				ws.send(str);
+			}
+		};
+		
+		function send_event(id, event, data) {
+			var str = JSON.stringify({
+				type: "data",
+				id: id,
+				event: event,
+				data: data,
+			});
+			ws.send(str);
+		}		</script>
 		{{.AfterCode}}
     </body>
 </html>
@@ -48,7 +158,7 @@ var (
 )
 
 //Register this method to register in router of Echo page and websocket
-func (pc *PageControl) Register(fx func() *ComponentDriver) {
+func (pc *PageControl) Register(fx func() LiveDriver) {
 	if utils.Exists(pc.AfterCode) {
 		pc.AfterCode, _ = utils.FileToString(pc.AfterCode)
 	}
@@ -73,7 +183,12 @@ func (pc *PageControl) Register(fx func() *ComponentDriver) {
 	pc.Router.GET(pc.Path+"ws_goliveview", func(c echo.Context) error {
 
 		content := fx()
+		for _, v := range componentsDrivers {
+			content.Mount(v.GetComponet())
+		}
+
 		content.SetID("content")
+		//content.SetIDComponent("content")
 
 		channel := make(chan (map[string]interface{}))
 		upgrader := websocket.Upgrader{}
@@ -83,10 +198,10 @@ func (pc *PageControl) Register(fx func() *ComponentDriver) {
 		}
 		defer ws.Close()
 
-		drivers := make(map[string]*ComponentDriver)
+		drivers := make(map[string]LiveDriver)
 		channelIn := make(map[string](chan interface{}))
 
-		go content.Start(&drivers, &channelIn, channel)
+		go content.StartDriver(&drivers, &channelIn, channel)
 
 		go func() {
 			for {

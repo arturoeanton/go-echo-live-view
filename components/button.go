@@ -5,19 +5,27 @@ import (
 )
 
 type Button struct {
-	Driver  *liveview.ComponentDriver
+	*liveview.ComponentDriver[*Button]
 	I       int
 	Caption string
 }
 
 func (t *Button) Start() {
-	t.Driver.Commit()
+	t.Commit()
 }
 
 func (t *Button) GetTemplate() string {
+	return `<Button id="{{.IdComponent}}" onclick="send_event(this.id,'Click')" >{{.Caption}}</button>`
+}
 
-	return `<Button id="{{.Driver.IdComponent}}" onclick="send_event(this.id,'Click')" >{{.Caption}}</button>`
+func (t *Button) GetDriver() liveview.LiveDriver {
+	return t
 }
 
 func (t *Button) Click(data interface{}) {
+}
+
+func (t *Button) SetClick(fx func(c *Button, data interface{})) *Button {
+	t.Events["Click"] = fx
+	return t
 }

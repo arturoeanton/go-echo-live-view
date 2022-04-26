@@ -14,17 +14,16 @@ func main() {
 	e.Use(middleware.Recover())
 
 	home := liveview.PageControl{
-		Title:  "Home",
-		Lang:   "en",
+		Title:  "Example1",
 		Path:   "/",
 		Router: e,
 	}
 
-	home.Register(func() *liveview.ComponentDriver {
-		clock1 := liveview.NewDriver("clock1", &components.Clock{})
+	home.Register(func() liveview.LiveDriver {
+		liveview.New("clock1", &components.Clock{})
 		return components.NewLayout("home", `
 		<div id="d2">{{mount "clock1"}}</div>
-		`).Mount(clock1)
+		`)
 	})
 
 	e.Logger.Fatal(e.Start(":1323"))

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"html"
 
 	"github.com/arturoeanton/go-echo-live-view/components"
 	"github.com/arturoeanton/go-echo-live-view/liveview"
@@ -16,43 +17,17 @@ func main() {
 	e.Use(middleware.Recover())
 
 	home := liveview.PageControl{
-		Title:  "Home",
+		Title:  "Example2",
 		Lang:   "en",
 		Path:   "/",
 		Router: e,
 	}
 
-	home.Register(func() *liveview.ComponentDriver {
+	home.Register(func() liveview.LiveDriver {
 
-		button1 := liveview.NewDriver("button1", &components.Button{Caption: "Sum 1"})
-		text1 := liveview.NewDriver("text1", &components.InputText{})
-
-		text1.Events["KeyUp"] = func(data interface{}) {
-			text1.FillValue("div_text_result", data.(string))
-		}
-
-		button1.Events["Click"] = func(data interface{}) {
-			button := button1.Component.(*components.Button)
-			button.I++
-			text := button.Driver.GetElementById("text1")
-			button.Driver.FillValue("span_result", fmt.Sprint(button.I)+" -> "+text)
-			button.Driver.EvalScript("console.log(1)")
-		}
-		button2 := liveview.NewDriver("button2", &components.Button{Caption: "Change ReadOnly"})
-		button2.Events["Click"] = func(data interface{}) {
-			button := button2.Component.(*components.Button)
-			text := button.Driver.GetPropertie("text1", "readOnly")
-			if text == "true" {
-				button.Driver.SetPropertie("text1", "readOnly", false)
-			} else {
-				button.Driver.SetPropertie("text1", "readOnly", true)
-			}
-			text = button.Driver.GetPropertie("text1", "readOnly")
-			button.Driver.SetText("span_result", "ReadOnly of text1 is "+text)
-		}
-
-		return components.NewLayout("home", `
+		document := components.NewLayout("home", `
 		{{ mount "text1"}}
+		<hr/>
 		<div id="div_text_result"></div>
 		<div>
 			{{mount "button2"}}
@@ -61,7 +36,35 @@ func main() {
 		<div>
 			<span id="span_result"></span>
 		</div>
-		`).Mount(text1).Mount(button1).Mount(button2)
+		`)
+
+		liveview.New("span_result", &liveview.None{})
+		liveview.New("div_text_result", &liveview.None{})
+		liveview.New("button1", &components.Button{Caption: "Sum 1"}).
+			SetEvent("Click", func(button1 *components.Button, data interface{}) {
+				spanResult := document.GetDriverById("span_result")
+				button1.I++
+				text1 := document.GetDriverById("text1")
+				spanResult.FillValue(fmt.Sprint(button1.I) + " -> " + html.EscapeString(text1.GetValue()))
+				document.EvalScript("console.log(1)")
+			})
+
+		liveview.New("button2", &components.Button{Caption: "Change ReadOnly"}).
+			SetClick(func(button2 *components.Button, data interface{}) {
+				spanResult := document.GetDriverById("span_result")
+				text1 := document.GetDriverById("text1")
+				flag := !(text1.GetPropertie("readOnly") == "true")
+				text1.SetPropertie("readOnly", flag)
+				spanResult.SetText("ReadOnly of text1 is " + text1.GetPropertie("readOnly"))
+			})
+
+		liveview.New("text1", &components.InputText{}).
+			SetKeyUp(func(text1 *components.InputText, data interface{}) {
+				divTextResult := document.GetDriverById("div_text_result")
+				divTextResult.FillValue(html.EscapeString(data.(string)))
+			})
+
+		return document
 
 	})
 

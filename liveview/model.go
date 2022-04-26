@@ -10,29 +10,74 @@ import (
 	"github.com/google/uuid"
 )
 
+var (
+	componentsDrivers map[string]LiveDriver = make(map[string]LiveDriver)
+)
+
 // Component it is interface for implement one component
 type Component interface {
 	// GetTemplate return html template for render with component in the {{.}}
 	GetTemplate() string
 	// Start it will invoke in the mount time
 	Start()
+	GetDriver() LiveDriver
+}
+
+type LiveDriver interface {
+	SetID(string)
+	StartDriver(*map[string]LiveDriver, *map[string]chan interface{}, chan (map[string]interface{}))
+	GetIDComponet() string
+	ExecuteEvent(name string, data interface{})
+
+	GetComponet() Component
+	Mount(component Component) LiveDriver
+	MountWithStart(id string, componentDriver LiveDriver) LiveDriver
+
+	Commit()
+	Remove(string)
+	AddNode(string, string)
+	FillValue(string)
+	SetHTML(string)
+	SetText(string)
+	SetPropertie(string, interface{})
+	SetValue(interface{})
+	EvalScript(string)
+	SetStyle(string)
+
+	FillValueById(id string, value string)
+
+	GetPropertie(string) string
+	GetDriverById(id string) LiveDriver
+	GetText() string
+	GetHTML() string
+	GetStyle(string) string
+	GetValue() string
+	GetElementById(string) string
 }
 
 // ComponentDriver this is the driver for component, with this struct we can execute our methods in the web
-type ComponentDriver struct {
+type ComponentDriver[T Component] struct {
 	id                string
 	IdComponent       string
-	Component         Component
+	Component         T
 	channel           chan (map[string]interface{})
-	componentsDrivers map[string]*ComponentDriver
-	DriversPage       *map[string]*ComponentDriver
+	componentsDrivers map[string]LiveDriver
+	DriversPage       *map[string]LiveDriver
 	channelIn         *map[string]chan interface{}
 	// Events has rewrite of our implementings of  events, examples click, change, keyup, keydown, etc
-	Events map[string]func(data interface{})
+	Events map[string]func(c T, data interface{})
+}
+
+func (cw *ComponentDriver[T]) SetEvent(name string, fx func(c T, data interface{})) {
+	cw.Events[name] = fx
+}
+
+func (cw *ComponentDriver[T]) GetIDComponet() string {
+	return cw.IdComponent
 }
 
 // Commit render of component
-func (cw *ComponentDriver) Commit() {
+func (cw *ComponentDriver[T]) Commit() {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Println("Recovered in Commit:", r)
@@ -44,48 +89,71 @@ func (cw *ComponentDriver) Commit() {
 	if err != nil {
 		log.Println(err)
 	}
-	cw.FillValue(cw.id, buf.String())
+	cw.FillValueById(cw.GetID(), buf.String())
 }
 
-func (cw *ComponentDriver) Start(drivers *map[string]*ComponentDriver, channelIn *map[string]chan interface{}, channel chan (map[string]interface{})) {
+func (cw *ComponentDriver[T]) StartDriver(drivers *map[string]LiveDriver, channelIn *map[string]chan interface{}, channel chan (map[string]interface{})) {
 	cw.channel = channel
 	cw.channelIn = channelIn
 	cw.Component.Start()
 	cw.DriversPage = drivers
-	(*drivers)[cw.IdComponent] = cw
+	(*drivers)[cw.GetIDComponet()] = cw
 	for _, c := range cw.componentsDrivers {
-		c.Start(drivers, channelIn, channel)
+		c.StartDriver(drivers, channelIn, channel)
 	}
 }
 
 // GetID return id of driver
-func (cw *ComponentDriver) GetID() string {
+func (cw *ComponentDriver[T]) GetComponet() Component {
+	return cw.Component
+}
+
+// GetID return id of driver
+func (cw *ComponentDriver[T]) GetDriverById(id string) LiveDriver {
+	if c, ok := cw.componentsDrivers["mount_span_"+id]; ok {
+		return c
+	}
+	return cw.componentsDrivers[id]
+}
+
+// GetID return id of driver
+func (cw *ComponentDriver[T]) GetID() string {
 	return cw.id
 }
 
 // SetID set id of driver
-func (cw *ComponentDriver) SetID(id string) {
+func (cw *ComponentDriver[T]) SetID(id string) {
 	cw.id = id
 }
 
 // Mount mount component in other component
-func (cw *ComponentDriver) Mount(componentDriver *ComponentDriver) *ComponentDriver {
-	id := "mount_span_" + componentDriver.IdComponent
+func (cw *ComponentDriver[T]) Mount(component Component) LiveDriver {
+	componentDriver := component.GetDriver()
+	id := "mount_span_" + componentDriver.GetIDComponet()
 	componentDriver.SetID(id)
 	cw.componentsDrivers[id] = componentDriver
 	return cw
 }
 
-// Mount mount component in other component
-func (cw *ComponentDriver) MountWithStart(id string, componentDriver *ComponentDriver) *ComponentDriver {
+// Mount mount component in other component"mount_span_" +
+func (cw *ComponentDriver[T]) MountWithStart(id string, componentDriver LiveDriver) LiveDriver {
 	componentDriver.SetID(id)
 	cw.componentsDrivers[id] = componentDriver
-	componentDriver.Start(cw.DriversPage, cw.channelIn, cw.channel)
+	componentDriver.StartDriver(cw.DriversPage, cw.channelIn, cw.channel)
 	return cw
+}
+
+func New[T Component](id string, c T) T {
+	NewDriver(id, c)
+	componentDriver := c.GetDriver()
+	idMount := "mount_span_" + componentDriver.GetIDComponet()
+	componentDriver.SetID(idMount)
+	componentsDrivers[idMount] = componentDriver
+	return c
 }
 
 // Create Driver with component
-func NewDriver(id string, c Component) *ComponentDriver {
+func NewDriver[T Component](id string, c T) *ComponentDriver[T] {
 	driver := newDriver(c)
 	driver.IdComponent = id
 	ps := reflect.ValueOf(c)
@@ -94,26 +162,31 @@ func NewDriver(id string, c Component) *ComponentDriver {
 		field.SetString(id)
 	}
 	field = ps.Elem().FieldByName("Driver")
+
 	if field.CanSet() {
 		field.Set(reflect.ValueOf(driver))
+	} else {
+		field = ps.Elem().FieldByName("ComponentDriver")
+		if field.CanSet() {
+			field.Set(reflect.ValueOf(driver))
+		}
 	}
-
 	return driver
 }
 
-func newDriver(c Component) *ComponentDriver {
-	driver := &ComponentDriver{Component: c}
-	driver.componentsDrivers = make(map[string]*ComponentDriver)
-	driver.Events = make(map[string]func(interface{}))
+func newDriver[T Component](c T) *ComponentDriver[T] {
+	driver := &ComponentDriver[T]{Component: c}
+	driver.componentsDrivers = make(map[string]LiveDriver)
+	driver.Events = make(map[string]func(T, interface{}))
 	return driver
 }
 
 // ExecuteEvent execute events
-func (cw *ComponentDriver) ExecuteEvent(name string, data interface{}) {
+func (cw *ComponentDriver[T]) ExecuteEvent(name string, data interface{}) {
 	if cw == nil {
 		return
 	}
-	go func(cw *ComponentDriver) {
+	go func(cw *ComponentDriver[T]) {
 		defer func() {
 			if r := recover(); r != nil {
 				log.Println("Recovered in ExecuteEvent:", r)
@@ -125,7 +198,7 @@ func (cw *ComponentDriver) ExecuteEvent(name string, data interface{}) {
 
 		if cw.Events != nil {
 			if fx, ok := cw.Events[name]; ok {
-				go fx(data)
+				go fx(cw.Component, data)
 				return
 			}
 		}
@@ -136,81 +209,86 @@ func (cw *ComponentDriver) ExecuteEvent(name string, data interface{}) {
 }
 
 //Remove
-func (cw *ComponentDriver) Remove(id string) {
+func (cw *ComponentDriver[T]) Remove(id string) {
 	cw.channel <- map[string]interface{}{"type": "remove", "id": id}
 }
 
 //AddNode add node to id
-func (cw *ComponentDriver) AddNode(id string, value string) {
+func (cw *ComponentDriver[T]) AddNode(id string, value string) {
 	cw.channel <- map[string]interface{}{"type": "addNode", "id": id, "value": value}
 }
 
 //FillValue is same SetHTML
-func (cw *ComponentDriver) FillValue(id string, value string) {
+func (cw *ComponentDriver[T]) FillValueById(id string, value string) {
 	cw.channel <- map[string]interface{}{"type": "fill", "id": id, "value": value}
+}
+
+//FillValue is same SetHTML
+func (cw *ComponentDriver[T]) FillValue(value string) {
+	cw.channel <- map[string]interface{}{"type": "fill", "id": cw.GetIDComponet(), "value": value}
 }
 
 //SetHTML is same FillValue :p haha, execute  document.getElementById("$id").innerHTML = $value
-func (cw *ComponentDriver) SetHTML(id string, value string) {
-	cw.channel <- map[string]interface{}{"type": "fill", "id": id, "value": value}
+func (cw *ComponentDriver[T]) SetHTML(value string) {
+	cw.channel <- map[string]interface{}{"type": "fill", "id": cw.GetIDComponet(), "value": value}
 }
 
 //SetText execute document.getElementById("$id").innerText = $value
-func (cw *ComponentDriver) SetText(id string, value string) {
-	cw.channel <- map[string]interface{}{"type": "text", "id": id, "value": value}
+func (cw *ComponentDriver[T]) SetText(value string) {
+	cw.channel <- map[string]interface{}{"type": "text", "id": cw.GetIDComponet(), "value": value}
 }
 
 //SetPropertie execute  document.getElementById("$id")[$propertie] = $value
-func (cw *ComponentDriver) SetPropertie(id string, propertie string, value interface{}) {
-	cw.channel <- map[string]interface{}{"type": "propertie", "id": id, "propertie": propertie, "value": value}
+func (cw *ComponentDriver[T]) SetPropertie(propertie string, value interface{}) {
+	cw.channel <- map[string]interface{}{"type": "propertie", "id": cw.GetIDComponet(), "propertie": propertie, "value": value}
 }
 
 //SetValue execute document.getElementById("$id").value = $value|
-func (cw *ComponentDriver) SetValue(id string, value interface{}) {
-	cw.channel <- map[string]interface{}{"type": "set", "id": id, "value": value}
+func (cw *ComponentDriver[T]) SetValue(value interface{}) {
+	cw.channel <- map[string]interface{}{"type": "set", "id": cw.GetIDComponet(), "value": value}
 }
 
 //EvalScript execute eval($code);
-func (cw *ComponentDriver) EvalScript(code string) {
+func (cw *ComponentDriver[T]) EvalScript(code string) {
 	cw.channel <- map[string]interface{}{"type": "script", "value": code}
 }
 
 //SetStyle execute  document.getElementById("$id").style.cssText = $style
-func (cw *ComponentDriver) SetStyle(id string, style string) {
-	cw.channel <- map[string]interface{}{"type": "style", "id": id, "value": style}
+func (cw *ComponentDriver[T]) SetStyle(style string) {
+	cw.channel <- map[string]interface{}{"type": "style", "id": cw.GetIDComponet(), "value": style}
 }
 
 //GetElementById same as GetValue
-func (cw *ComponentDriver) GetElementById(id string) string {
+func (cw *ComponentDriver[T]) GetElementById(id string) string {
 	return cw.get(id, "value", "")
 }
 
 //GetValue return document.getElementById("$id").value
-func (cw *ComponentDriver) GetValue(id string) string {
-	return cw.get(id, "value", "")
+func (cw *ComponentDriver[T]) GetValue() string {
+	return cw.get(cw.GetIDComponet(), "value", "")
 }
 
 //GetStyle  return document.getElementById("$id").style["$propertie"]
-func (cw *ComponentDriver) GetStyle(id string, propertie string) string {
-	return cw.get(id, "style", propertie)
+func (cw *ComponentDriver[T]) GetStyle(propertie string) string {
+	return cw.get(cw.GetIDComponet(), "style", propertie)
 }
 
 //GetHTML  return document.getElementById("$id").innerHTML
-func (cw *ComponentDriver) GetHTML(id string) string {
-	return cw.get(id, "html", "")
+func (cw *ComponentDriver[T]) GetHTML() string {
+	return cw.get(cw.GetIDComponet(), "html", "")
 }
 
 //GetText  return document.getElementById("$id").innerText
-func (cw *ComponentDriver) GetText(id string) string {
-	return cw.get(id, "text", "")
+func (cw *ComponentDriver[T]) GetText() string {
+	return cw.get(cw.GetIDComponet(), "text", "")
 }
 
 //GetPropertie return document.getElementById("$id")[$propertie]
-func (cw *ComponentDriver) GetPropertie(id string, name string) string {
-	return cw.get(id, "propertie", name)
+func (cw *ComponentDriver[T]) GetPropertie(name string) string {
+	return cw.get(cw.GetIDComponet(), "propertie", name)
 }
 
-func (cw *ComponentDriver) get(id string, subType string, value string) string {
+func (cw *ComponentDriver[T]) get(id string, subType string, value string) string {
 	uid := uuid.NewString()
 	(*cw.channelIn)[uid] = make(chan interface{})
 	defer delete((*cw.channelIn), uid)

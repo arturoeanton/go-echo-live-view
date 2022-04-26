@@ -9,11 +9,15 @@ import (
 )
 
 type Button struct {
-	Driver *liveview.ComponentDriver
+	*liveview.ComponentDriver[*Button]
+}
+
+func (t *Button) GetDriver() liveview.LiveDriver {
+	return t
 }
 
 func (t *Button) Start() {
-	t.Driver.Commit()
+	t.Commit()
 }
 
 func (t *Button) GetTemplate() string {
@@ -21,11 +25,12 @@ func (t *Button) GetTemplate() string {
 }
 
 func (t *Button) Click(data interface{}) {
-	background := t.Driver.GetStyle("button1", "background")
+
+	background := t.GetStyle("background")
 	if background != "red" {
-		t.Driver.SetStyle("button1", "background: red")
+		t.SetStyle("background: red")
 	} else {
-		t.Driver.SetStyle("button1", "background: blue")
+		t.SetStyle("background: blue")
 	}
 }
 
@@ -42,9 +47,10 @@ func main() {
 		Router:   e,
 		//	Debug:    true,
 	}
-	home.Register(func() *liveview.ComponentDriver {
-		button1 := liveview.NewDriver("button1", &Button{})
-		return components.NewLayout("home", `<div> {{mount "button1"}} </div>`).Mount(button1)
+	home.Register(func() liveview.LiveDriver {
+		document := components.NewLayout("home", `<div> {{mount "button1"}} </div>`)
+		liveview.New("button1", &Button{})
+		return document
 	})
 	e.Logger.Fatal(e.Start(":1323"))
 }
