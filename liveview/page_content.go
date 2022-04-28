@@ -34,123 +34,18 @@ var (
 		<style>
 			{{.Css}}
 		</style>
+		<meta charset="utf-8"/>
+        <script src="assets/wasm_exec.js"></script>
 	</head>
     <body>
 		<div id="content"> 
 		</div>
 		<script>
-		var loc = window.location;
-		var uri = "ws:";
-		
-		if (loc.protocol === "https:") {
-			uri = "wss:";
-		}
-		uri += "//" + loc.host;
-		uri += loc.pathname + "ws_goliveview";
-		
-		ws = new WebSocket(uri);
-		
-		ws.onopen = function () {
-			console.log("Connected");
-		};
-		
-		ws.onmessage = function (evt) {
-			json_data = JSON.parse(evt.data);
-			var out = document.getElementById(json_data.id);
-		
-			if (json_data.type == "fill") {
-				try{
-				out.innerHTML = json_data.value;
-				}catch(e){
-					console.log(out);
-					console.log(json_data.id);
-				}
-			}
-		
-			if (json_data.type == "remove") {
-				out.remove();
-			}
-		
-			if (json_data.type == "addNode") {
-				var d = document.createElement("div");
-				d.innerHTML = json_data.value;
-				out.appendChild(d);
-			}
-		
-			if (json_data.type == "text") {
-				out.innerText = json_data.value;
-			}
-		
-			if (json_data.type == "propertie") {
-				out[json_data.propertie] = json_data.value;
-			}
-		
-			if (json_data.type == "style") {
-				out.style.cssText = json_data.value;
-			}
-		
-			if (json_data.type == "set") {
-				out.value = json_data.value;
-			}
-		
-			if (json_data.type == "script") {
-				eval(json_data.value);
-			}
-		
-			if (json_data.type == "get") {
-				str = JSON.stringify({
-					type: "get",
-					id_ret: json_data.id_ret,
-					data: null,
-				});
-				if (json_data.sub_type == "style") {
-					str = JSON.stringify({
-						type: "get",
-						id_ret: json_data.id_ret,
-						data: document.getElementById(json_data.id).style[json_data.value],
-					});
-				}
-				if (json_data.sub_type == "value") {
-					str = JSON.stringify({
-						type: "get",
-						id_ret: json_data.id_ret,
-						data: document.getElementById(json_data.id).value,
-					});
-				}
-				if (json_data.sub_type == "html") {
-					str = JSON.stringify({
-						type: "get",
-						id_ret: json_data.id_ret,
-						data: document.getElementById(json_data.id).innerHTML,
-					});
-				}
-				if (json_data.sub_type == "text") {
-					str = JSON.stringify({
-						type: "get",
-						id_ret: json_data.id_ret,
-						data: document.getElementById(json_data.id).innerHTML,
-					});
-				}
-				if (json_data.sub_type == "propertie") {
-					str = JSON.stringify({
-						type: "get",
-						id_ret: json_data.id_ret,
-						data: document.getElementById(json_data.id)[json_data.value],
-					});
-				}
-				ws.send(str);
-			}
-		};
-		
-		function send_event(id, event, data) {
-			var str = JSON.stringify({
-				type: "data",
-				id: id,
-				event: event,
-				data: data,
-			});
-			ws.send(str);
-		}		</script>
+		const go = new Go();
+		WebAssembly.instantiateStreaming(fetch("assets/json.wasm"), go.importObject).then((result) => {
+			go.run(result.instance);
+		});
+	</script>
 		{{.AfterCode}}
     </body>
 </html>
@@ -171,6 +66,8 @@ func (pc *PageControl) Register(fx func() LiveDriver) {
 	if utils.Exists("live.js") {
 		pc.LiveJs, _ = utils.FileToString("live.js")
 	}
+
+	pc.Router.Static("/assets", "assets")
 	pc.Router.GET(pc.Path, func(c echo.Context) error {
 		t := template.Must(template.New("page_control").Parse(html))
 		buf := new(bytes.Buffer)

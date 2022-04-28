@@ -5,7 +5,7 @@ exclude:
   - txt
   - md
 commands:
-  command: go run example/example2/example2.go
+  command: sh ./build_and_run.sh
   terminate: killall example
 extensions:
   - go
