@@ -2,6 +2,7 @@ name: example
 include: 
   - .
 exclude:
+  - .git/*
   - txt
   - md
 commands:
