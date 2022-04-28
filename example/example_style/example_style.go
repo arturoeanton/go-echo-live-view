@@ -41,7 +41,7 @@ func main() {
 
 	home := liveview.PageControl{
 		Title:    "Home",
-		HeadCode: "head.html",
+		HeadCode: "example/example_todo/head.html",
 		Lang:     "en",
 		Path:     "/",
 		Router:   e,
