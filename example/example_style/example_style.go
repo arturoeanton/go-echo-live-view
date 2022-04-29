@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/arturoeanton/go-echo-live-view/components"
 	"github.com/arturoeanton/go-echo-live-view/liveview"
 
 	"github.com/labstack/echo/v4"
@@ -48,7 +47,7 @@ func main() {
 		//	Debug:    true,
 	}
 	home.Register(func() liveview.LiveDriver {
-		document := components.NewLayout("home", `<div> {{mount "button1"}} </div>`)
+		document := liveview.NewLayout("home", `<div> {{mount "button1"}} </div>`)
 		liveview.New("button1", &Button{})
 		return document
 	})

@@ -1,8 +1,6 @@
 package components
 
-import (
-	"github.com/arturoeanton/go-echo-live-view/liveview"
-)
+import "github.com/arturoeanton/go-echo-live-view/liveview"
 
 type Button struct {
 	*liveview.ComponentDriver[*Button]

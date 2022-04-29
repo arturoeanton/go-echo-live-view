@@ -21,7 +21,7 @@ func main() {
 
 	home.Register(func() liveview.LiveDriver {
 		liveview.New("clock1", &components.Clock{})
-		return components.NewLayout("home", `
+		return liveview.NewLayout("home", `
 		<div id="d2">{{mount "clock1"}}</div>
 		`)
 	})

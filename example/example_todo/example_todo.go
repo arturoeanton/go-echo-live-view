@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"strconv"
 
-	"github.com/arturoeanton/go-echo-live-view/components"
 	"github.com/arturoeanton/go-echo-live-view/liveview"
 	"github.com/arturoeanton/gocommons/utils"
 	"github.com/google/uuid"
@@ -96,7 +95,7 @@ func main() {
 	}
 	home.Register(func() liveview.LiveDriver {
 		liveview.New("todo", &Todo{})
-		return components.NewLayout("home", `<div> {{mount "todo"}} </div>`)
+		return liveview.NewLayout("home", `<div> {{mount "todo"}} </div>`)
 	})
 	e.Logger.Fatal(e.Start(":1323"))
 }

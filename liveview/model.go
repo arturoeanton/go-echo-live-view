@@ -13,6 +13,7 @@ import (
 
 var (
 	componentsDrivers map[string]LiveDriver = make(map[string]LiveDriver)
+	mu                sync.Mutex
 )
 
 // Component it is interface for implement one component
@@ -25,6 +26,7 @@ type Component interface {
 }
 
 type LiveDriver interface {
+	GetID() string
 	SetID(string)
 	StartDriver(*map[string]LiveDriver, *map[string]chan interface{}, chan (map[string]interface{}))
 	GetIDComponet() string
@@ -94,15 +96,23 @@ func (cw *ComponentDriver[T]) Commit() {
 }
 
 func (cw *ComponentDriver[T]) StartDriver(drivers *map[string]LiveDriver, channelIn *map[string]chan interface{}, channel chan (map[string]interface{})) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("Recovered in f", r)
+		}
+	}()
 	cw.channel = channel
 	cw.channelIn = channelIn
 	cw.Component.Start()
 	cw.DriversPage = drivers
+	mu.Lock()
 	(*drivers)[cw.GetIDComponet()] = cw
+	mu.Unlock()
 	var wg sync.WaitGroup
 	for _, c := range cw.componentsDrivers {
 		wg.Add(1)
 		go func(c LiveDriver) {
+			defer HandleReover()
 			defer wg.Done()
 			c.StartDriver(drivers, channelIn, channel)
 		}(c)
@@ -194,18 +204,17 @@ func (cw *ComponentDriver[T]) ExecuteEvent(name string, data interface{}) {
 		return
 	}
 	go func(cw *ComponentDriver[T]) {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Println("Recovered in ExecuteEvent:", r)
-			}
-		}()
+		defer HandleReover()
 		if data == nil {
 			data = make(map[string]interface{})
 		}
 
 		if cw.Events != nil {
 			if fx, ok := cw.Events[name]; ok {
-				go fx(cw.Component, data)
+				go func() {
+					defer HandleReover()
+					fx(cw.Component, data)
+				}()
 				return
 			}
 		}

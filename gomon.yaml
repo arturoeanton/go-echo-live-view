@@ -1,8 +1,7 @@
 name: example
 include: 
-  - .
+  - ./example
 exclude:
-  - .git/*
   - txt
   - md
 commands:

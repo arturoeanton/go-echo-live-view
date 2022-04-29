@@ -46,8 +46,16 @@ type DataEventOut struct {
 	Data  interface{} `json:"data"`
 }
 
-func main() {
-	fmt.Println("Go Web Assembly")
+func connect() {
+	document = js.Global().Get("document")
+	window = js.Global().Get("window")
+	console = js.Global().Get("console")
+	webSocket = js.Global().Get("WebSocket")
+	loc = window.Get("location")
+	uri = "ws:"
+	protocol = loc.Get("protocol").String()
+
+	fmt.Println("Go Web LiveView")
 	if protocol == "https:" {
 		uri = "wss:"
 	}
@@ -56,7 +64,20 @@ func main() {
 	ws = webSocket.New(uri)
 
 	handlerOnOpen := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		fmt.Println(ws.Get("readyState").Int())
 		fmt.Println("Connected...ok")
+		return nil
+	})
+
+	handlerOnClose := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Println("Recovered in f", r)
+			}
+		}()
+		fmt.Println(ws)
+		fmt.Println("Disconnected...ok")
+		document.Call("getElementById", "content").Set("innerHTML", "Disconnected")
 		return nil
 	})
 
@@ -138,8 +159,28 @@ func main() {
 		return nil
 	})
 
+	ws.Set("onclose", handlerOnClose)
 	ws.Set("onopen", handlerOnOpen)
 	ws.Set("onmessage", handlerOnMessage)
+
+}
+
+func main() {
+	document.Call("getElementById", "content").Set("innerHTML", "Disconnected")
+	connect()
+
+	js.Global().Call("setInterval", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		if ws.Get("readyState").Int() != 1 {
+			connect()
+		}
+		return nil
+	}), 1000)
+
+	js.Global().Set("ws", ws)
+	js.Global().Set("connect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		connect()
+		return nil
+	}))
 
 	js.Global().Set("send_event", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		id := args[0].String()

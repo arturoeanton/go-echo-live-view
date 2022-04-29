@@ -80,6 +80,13 @@ func (pc *PageControl) Register(fx func() LiveDriver) {
 	pc.Router.GET(pc.Path+"ws_goliveview", func(c echo.Context) error {
 
 		content := fx()
+		defer func() {
+			MuLayout.Lock()
+			defer MuLayout.Unlock()
+			id := content.GetIDComponet()
+			delete(Layaouts, id)
+			fmt.Println("Delete Layout:", id)
+		}()
 		for _, v := range componentsDrivers {
 			content.Mount(v.GetComponet())
 		}
@@ -98,12 +105,23 @@ func (pc *PageControl) Register(fx func() LiveDriver) {
 		drivers := make(map[string]LiveDriver)
 		channelIn := make(map[string](chan interface{}))
 
-		go content.StartDriver(&drivers, &channelIn, channel)
-
 		go func() {
+			defer HandleReover()
+			content.StartDriver(&drivers, &channelIn, channel)
+		}()
+		end := make(chan bool)
+		defer func() {
+			end <- true
+		}()
+		go func() {
+			defer HandleReover()
 			for {
-				data := <-channel
-				ws.WriteJSON(data)
+				select {
+				case data := <-channel:
+					ws.WriteJSON(data)
+				case <-end:
+					return
+				}
 			}
 		}()
 
