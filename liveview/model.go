@@ -60,9 +60,9 @@ type LiveDriver interface {
 
 // ComponentDriver this is the driver for component, with this struct we can execute our methods in the web
 type ComponentDriver[T Component] struct {
+	Component         T
 	id                string
 	IdComponent       string
-	Component         T
 	channel           chan (map[string]interface{})
 	componentsDrivers map[string]LiveDriver
 	DriversPage       *map[string]LiveDriver

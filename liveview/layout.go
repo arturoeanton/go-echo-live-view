@@ -3,6 +3,7 @@ package liveview
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/arturoeanton/gocommons/utils"
 	"github.com/google/uuid"
@@ -10,9 +11,12 @@ import (
 
 type Layout struct {
 	*ComponentDriver[*Layout]
-	UUID   string
-	Html   string
-	ChanIn chan interface{}
+	UUID              string
+	Html              string
+	ChanIn            chan interface{}
+	HandlerEventIn    *func(data interface{})
+	HandlerEventTime  *func()
+	IntervalEventTime time.Duration
 }
 
 func (t *Layout) GetDriver() LiveDriver {
@@ -46,8 +50,10 @@ func SendToLayouts(msg interface{}, uuids ...string) {
 		wg.Add(1)
 		go func(uid string) {
 			defer wg.Done()
-			v := Layaouts[uid]
-			v.ChanIn <- msg
+			v, ok := Layaouts[uid]
+			if ok {
+				v.ChanIn <- msg
+			}
 		}(uid)
 	}
 	wg.Wait()
@@ -58,13 +64,38 @@ func NewLayout(html string) *ComponentDriver[*Layout] {
 		html, _ = utils.FileToString(html)
 	}
 	uid := uuid.NewString()
-	c := &Layout{UUID: uid, Html: html, ChanIn: make(chan interface{}, 1)}
+	c := &Layout{UUID: uid, Html: html, ChanIn: make(chan interface{}, 1), IntervalEventTime: time.Hour * 24}
 	MuLayout.Lock()
 	Layaouts[uid] = c
 	MuLayout.Unlock()
 	fmt.Println("NewLayout", uid)
 	c.ComponentDriver = NewDriver(uid, c)
+
+	go func() {
+		for {
+			select {
+			case data := <-c.Component.ChanIn:
+				if c.HandlerEventIn != nil {
+					(*c.HandlerEventIn)(data)
+				}
+			case <-time.After(c.IntervalEventTime):
+				if c.HandlerEventTime != nil {
+					(*c.HandlerEventTime)()
+				}
+			}
+		}
+	}()
+
 	return c.ComponentDriver
+}
+
+func (t *Layout) SetHandlerEventIn(fx func(data interface{})) {
+	t.HandlerEventIn = &fx
+}
+
+func (t *Layout) SetHandlerEventTime(IntervalEventTime time.Duration, fx func()) {
+	t.IntervalEventTime = IntervalEventTime
+	t.HandlerEventTime = &fx
 }
 
 func (t *Layout) Start() {
