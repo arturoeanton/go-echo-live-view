@@ -95,7 +95,7 @@ func main() {
 	}
 	home.Register(func() liveview.LiveDriver {
 		liveview.New("todo", &Todo{})
-		return liveview.NewLayout("home", `<div> {{mount "todo"}} </div>`)
+		return liveview.NewLayout(`<div> {{mount "todo"}} </div>`)
 	})
 	e.Logger.Fatal(e.Start(":1323"))
 }

@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"html"
+	"sync"
 	"time"
 
 	"github.com/arturoeanton/go-echo-live-view/components"
@@ -10,6 +10,13 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+)
+
+var (
+	// LiveView is the live view instance
+	userMutex                   = &sync.Mutex{}
+	users     map[string]string = make(map[string]string)
+	usersById map[string]string = make(map[string]string)
 )
 
 func main() {
@@ -25,74 +32,61 @@ func main() {
 	}
 
 	home.Register(func() liveview.LiveDriver {
-		document := liveview.NewLayout("home", `
-		{{ mount "text1"}}
+		document := liveview.NewLayout(`
+		
+		<div> Nickname: {{ mount "text_nickname" }} <span id="span_text_nickname"></span>
 		<hr/>
-		LocalStatus:<div id="div_text_result"></div>
-		<div>
-			{{mount "button2"}}
-			{{mount "button1"}}
+		<div id="div_general_chat">
 		</div>
-		<div>
-			Resuls:<span id="span_result"></span><br/>
-			Attr Text:<span id="span_result_attr"></span>
-		</div>
-		{{mount "button3"}}
-
-		<div>
-			GlobalStatus:<br/><span id="span_global_status"></span>
-		</div>
+		<hr/>
+		<div> Message: {{ mount "text_msg" }} to {{ mount "text_to" }} {{mount "button_send"}}</div>
+		<hr/>
 		<br>
+		<div id="div_status"></div>
 		`)
 
+		liveview.New("span_text_nickname", &liveview.None{})
+		liveview.New("div_general_chat", &liveview.None{})
 		liveview.New("span_result", &liveview.None{})
-		liveview.New("div_text_result", &liveview.None{})
-		liveview.New("span_result_attr", &liveview.None{})
-		liveview.New("span_global_status", &liveview.None{})
+		liveview.New("div_status", &liveview.None{})
 
-		liveview.New("button3", &components.Button{Caption: "Button 3!!"}).
+		liveview.New("text_msg", &components.InputText{})
+		liveview.New("text_to", &components.InputText{})
+
+		liveview.New("text_nickname", &components.InputText{}).
+			SetEvent("Change", func(this *components.InputText, data interface{}) {
+				userMutex.Lock()
+				defer userMutex.Unlock()
+				users[fmt.Sprint(data)] = document.Component.UUID
+				usersById[document.Component.UUID] = fmt.Sprint(data)
+				spanTextNickname := document.GetDriverById("span_text_nickname")
+				spanTextNickname.FillValue(fmt.Sprint(data))
+				textTo := document.GetDriverById("text_to")
+				textTo.SetValue("*")
+			})
+
+		liveview.New("button_send", &components.Button{Caption: "Send"}).
 			SetClick(func(this *components.Button, data interface{}) {
-				this.I++
-				this.Caption = "Button " + fmt.Sprint(this.I)
-				this.Commit()
-			})
-
-		liveview.New("button1", &components.Button{Caption: "Sum 1"}).
-			SetEvent("Click", func(button1 *components.Button, data interface{}) {
-				spanResult := document.GetDriverById("span_result")
-				button1.I++
-				text1 := document.GetDriverById("text1")
-				spanResult.FillValue(fmt.Sprint(button1.I) + " -> " + html.EscapeString(text1.GetValue()))
-				document.EvalScript("console.log(1)")
-			})
-
-		liveview.New("button2", &components.Button{Caption: "Change ReadOnly"}).
-			SetClick(func(button2 *components.Button, data interface{}) {
-				spanResultAttr := document.GetDriverById("span_result_attr")
-				text1 := document.GetDriverById("text1")
-				flag := !(text1.GetPropertie("readOnly") == "true")
-				text1.SetPropertie("readOnly", flag)
-				spanResultAttr.SetText("ReadOnly of text1 is " + text1.GetPropertie("readOnly"))
-			})
-
-		liveview.New("text1", &components.InputText{}).
-			SetKeyUp(func(text1 *components.InputText, data interface{}) {
-				divTextResult := document.GetDriverById("div_text_result")
-				divTextResult.SetText(html.EscapeString(text1.GetValue()))
-				//outChannel <- text1.GetValue()
-				document.Component.ChanBus <- text1.GetValue()
-				divTextResult.FillValue(html.EscapeString(data.(string)))
+				nickname := usersById[document.Component.UUID]
+				textMsg := document.GetDriverById("text_msg")
+				textTo := document.GetDriverById("text_to")
+				if textTo.GetValue() == "*" || textTo.GetValue() == "" {
+					liveview.SendToAllLayouts(fmt.Sprint(nickname, "[Public]:", textMsg.GetValue()))
+					return
+				}
+				liveview.SendToLayouts(fmt.Sprint(nickname, " to ", textTo.GetValue(), "[Private]:", textMsg.GetValue()), users[textTo.GetValue()], document.Component.UUID)
 			})
 
 		go func() {
 			for {
 				select {
 				case data := <-document.Component.ChanIn:
-					spanGlobalStatus := document.GetDriverById("span_global_status")
-					spanGlobalStatus.FillValue(fmt.Sprint(data))
+					divGeneralChat := document.GetDriverById("div_general_chat")
+					history := divGeneralChat.GetHTML() + "<br/>"
+					divGeneralChat.FillValue(fmt.Sprint(history, data))
 				case <-time.After(time.Second * 10):
-					spanGlobalStatus := document.GetDriverById("span_global_status")
-					spanGlobalStatus.FillValue(" shhhhhh")
+					spanGlobalStatus := document.GetDriverById("div_status")
+					spanGlobalStatus.FillValue("online")
 				}
 			}
 		}()
@@ -103,15 +97,4 @@ func main() {
 	)
 
 	e.Logger.Fatal(e.Start(":1323"))
-}
-
-func SafeSend[T any](ch chan T, value T) (closed bool) {
-	defer func() {
-		if recover() != nil {
-			closed = true
-		}
-	}()
-
-	ch <- value  // panic if ch is closed
-	return false // <=> closed = false; return
 }

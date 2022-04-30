@@ -10,10 +10,9 @@ import (
 
 type Layout struct {
 	*ComponentDriver[*Layout]
-	Html    string
-	ChanBus chan interface{}
-	ChanIn  chan interface{}
-	ChanOut chan interface{}
+	UUID   string
+	Html   string
+	ChanIn chan interface{}
 }
 
 func (t *Layout) GetDriver() LiveDriver {
@@ -25,23 +24,44 @@ var (
 	Layaouts map[string]*Layout = make(map[string]*Layout)
 )
 
-func NewLayout(id string, html string) *ComponentDriver[*Layout] {
+func SendToAllLayouts(msg interface{}) {
+	MuLayout.Lock()
+	defer MuLayout.Unlock()
+	wg := sync.WaitGroup{}
+	for _, v := range Layaouts {
+		wg.Add(1)
+		go func(v *Layout) {
+			defer wg.Done()
+			v.ChanIn <- msg
+		}(v)
+	}
+	wg.Wait()
+}
+
+func SendToLayouts(msg interface{}, uuids ...string) {
+	MuLayout.Lock()
+	defer MuLayout.Unlock()
+	wg := sync.WaitGroup{}
+	for _, uid := range uuids {
+		wg.Add(1)
+		go func(uid string) {
+			defer wg.Done()
+			v := Layaouts[uid]
+			v.ChanIn <- msg
+		}(uid)
+	}
+	wg.Wait()
+}
+
+func NewLayout(html string) *ComponentDriver[*Layout] {
 	if utils.Exists(html) {
 		html, _ = utils.FileToString(html)
 	}
-	c := &Layout{Html: html, ChanBus: make(chan interface{}, 1), ChanIn: make(chan interface{}, 1)}
 	uid := uuid.NewString()
+	c := &Layout{UUID: uid, Html: html, ChanIn: make(chan interface{}, 1)}
 	MuLayout.Lock()
 	Layaouts[uid] = c
 	MuLayout.Unlock()
-	go func() {
-		for {
-			data := <-c.ChanBus
-			for _, v := range Layaouts {
-				v.ChanIn <- data
-			}
-		}
-	}()
 	fmt.Println("NewLayout", uid)
 	c.ComponentDriver = NewDriver(uid, c)
 	return c.ComponentDriver

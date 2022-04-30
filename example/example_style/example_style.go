@@ -47,7 +47,7 @@ func main() {
 		//	Debug:    true,
 	}
 	home.Register(func() liveview.LiveDriver {
-		document := liveview.NewLayout("home", `<div> {{mount "button1"}} </div>`)
+		document := liveview.NewLayout(`<div> {{mount "button1"}} </div>`)
 		liveview.New("button1", &Button{})
 		return document
 	})
