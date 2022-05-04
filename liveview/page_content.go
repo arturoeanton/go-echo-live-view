@@ -26,7 +26,7 @@ type PageControl struct {
 
 var (
 	//websockets map[string]websocket.Upgrader = make(map[string]websocket.Upgrader)
-	html string = `
+	templateBase string = `
 <html lang="{{.Lang}}">
 	<head>
 		<title>{{.Title}}</title>
@@ -69,7 +69,7 @@ func (pc *PageControl) Register(fx func() LiveDriver) {
 
 	pc.Router.Static("/assets", "assets")
 	pc.Router.GET(pc.Path, func(c echo.Context) error {
-		t := template.Must(template.New("page_control").Parse(html))
+		t := template.Must(template.New("page_control").Parse(templateBase))
 		buf := new(bytes.Buffer)
 		_ = t.Execute(buf, pc)
 		c.HTML(http.StatusOK, buf.String())
@@ -81,11 +81,25 @@ func (pc *PageControl) Register(fx func() LiveDriver) {
 
 		content := fx()
 		defer func() {
-			MuLayout.Lock()
-			defer MuLayout.Unlock()
-			id := content.GetIDComponet()
-			delete(Layaouts, id)
-			fmt.Println("Delete Layout:", id)
+			func() {
+				MuLayout.Lock()
+				defer MuLayout.Unlock()
+				id := content.GetIDComponet()
+				delete(Layaouts, id)
+			}()
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						fmt.Println("Layout has not HandlerEventDestroy method defined", r)
+					}
+				}()
+				handlerEventDestroy := (content.GetComponet().(*Layout)).HandlerEventDestroy
+				if handlerEventDestroy != nil {
+					(*handlerEventDestroy)(content.GetIDComponet())
+				}
+			}()
+
+			fmt.Println("Delete Layout:", content.GetIDComponet())
 		}()
 		for _, v := range componentsDrivers {
 			content.Mount(v.GetComponet())

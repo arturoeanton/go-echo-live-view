@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,79 +14,93 @@ import (
 )
 
 var (
-	userMutex                   = &sync.Mutex{}
-	users     map[string]string = make(map[string]string)
-	usersById map[string]string = make(map[string]string)
+	userMutex = &sync.Mutex{}
+	bUser     *liveview.BiMap[string, string]
 )
 
 func main() {
 	e := echo.New()
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
-
+	e.Use(middleware.Logger(), middleware.Recover())
+	bUser = liveview.NewBiMap[string, string]()
 	home := liveview.PageControl{
 		Title:  "Example2",
 		Lang:   "en",
 		Path:   "/",
 		Router: e,
 	}
-
+	bUser.Set("*", "Todos")
 	home.Register(func() liveview.LiveDriver {
 		document := liveview.NewLayout(`
-		<div> Nickname: {{ mount "text_nickname" }} <span id="span_text_nickname"></span>
-		<hr/>
-		<div id="div_general_chat"></div>
-		<hr/>
-		<div> Message: {{ mount "text_msg" }} to {{ mount "text_to" }} {{mount "button_send"}}</div>
-		<hr/>
-		<div id="div_status"></div>
-		`)
-		liveview.New("span_text_nickname", &liveview.None{})
-		liveview.New("div_general_chat", &liveview.None{})
-		liveview.New("span_result", &liveview.None{})
-		liveview.New("div_status", &liveview.None{})
-
+			<div> Nickname: {{ mount "text_nickname" }} <span id="span_text_nickname"></span>
+			<hr/>
+			<div id="div_general_chat"></div>
+			<hr/>
+			<div> Message: {{ mount "text_msg" }} to  {{ mount "select_to"}}  {{mount "button_send"}}</div>
+			<hr/>
+			<div id="div_status"></div>`)
+		liveview.NewWithTemplate("select_to",
+			`<select   onchange="send_event(this.id,'Change',this.value)" id="{{.IdComponent}}"   >
+				{{range $index, $element := .GetDriver.Data}}
+				<option value="{{$index}}" >{{$element}}</option>
+				{{end}}
+			</select>`)
 		liveview.New("text_msg", &components.InputText{})
-		liveview.New("text_to", &components.InputText{})
 		liveview.New("text_nickname", &components.InputText{}).
 			SetEvent("Change", func(this *components.InputText, data interface{}) {
 				userMutex.Lock()
 				defer userMutex.Unlock()
-				users[fmt.Sprint(data)] = document.Component.UUID
-				usersById[document.Component.UUID] = fmt.Sprint(data)
+				if _, ok := bUser.GetByValue(this.GetValue()); ok {
+					this.SetValue("")
+					return
+				}
+				bUser.Set(document.Component.UUID, this.GetValue())
 				spanTextNickname := document.GetDriverById("span_text_nickname")
 				spanTextNickname.FillValue(fmt.Sprint(data))
-				textTo := document.GetDriverById("text_to")
-				textTo.SetValue("*")
+				liveview.SendToAllLayouts("NEW_USER")
 			})
 		liveview.New("button_send", &components.Button{Caption: "Send"}).
 			SetClick(func(this *components.Button, data interface{}) {
 				userMutex.Lock()
 				defer userMutex.Unlock()
-				nickname := usersById[document.Component.UUID]
-				textMsg := document.GetDriverById("text_msg")
-				textTo := document.GetDriverById("text_to")
-
-				if textTo.GetValue() == "*" || textTo.GetValue() == "" {
-					liveview.SendToAllLayouts(fmt.Sprint(nickname, "[Public]:", textMsg.GetValue()))
-					return
+				if nickname, ok := bUser.Get(document.Component.UUID); ok {
+					textMsg := document.GetDriverById("text_msg").GetValue()
+					idTo := document.GetDriverById("select_to").GetValue()
+					if idTo == "*" {
+						liveview.SendToAllLayouts("MSG|" + fmt.Sprint(nickname, "[Public]:", textMsg))
+						return
+					}
+					if userTo, ok := bUser.Get(idTo); ok {
+						liveview.SendToLayouts("MSG|"+fmt.Sprint(nickname, " to ", userTo, "[Private]:", textMsg), idTo, document.Component.UUID)
+					}
 				}
-				liveview.SendToLayouts(fmt.Sprint(nickname, " to ", textTo.GetValue(), "[Private]:", textMsg.GetValue()), users[textTo.GetValue()], document.Component.UUID)
 			})
-
 		document.Component.SetHandlerEventIn(func(data interface{}) {
-			divGeneralChat := document.GetDriverById("div_general_chat")
-			history := divGeneralChat.GetHTML() + "<br/>"
-			divGeneralChat.FillValue(fmt.Sprint(history, data))
+			msg := data.(string)
+			if strings.HasPrefix(msg, "MSG|") {
+				msg = strings.TrimPrefix(msg, "MSG|")
+				divGeneralChat := document.GetDriverById("div_general_chat")
+				divGeneralChat.FillValue(fmt.Sprint(divGeneralChat.GetHTML(), msg, "<br/>"))
+			}
+			if strings.HasPrefix(msg, "NEW_USER") {
+				selectTo := document.GetDriverById("select_to")
+				idTemp := selectTo.GetValue()
+				selectTo.SetData(bUser.GetAll())
+				selectTo.Commit()
+				if _, ok := bUser.Get(idTemp); ok {
+					selectTo.SetValue(idTemp)
+				}
+			}
 		})
 		document.Component.SetHandlerEventTime(time.Second*5, func() {
 			spanGlobalStatus := document.GetDriverById("div_status")
 			spanGlobalStatus.FillValue("online")
 		})
 
+		document.Component.SetHandlerEventDestroy(func(id string) {
+			bUser.Delete(id)
+			liveview.SendToAllLayouts("NEW_USER")
+		})
 		return document
-
-	},
-	)
+	})
 	e.Logger.Fatal(e.Start(":1323"))
 }

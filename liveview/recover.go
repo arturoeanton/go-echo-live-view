@@ -7,3 +7,13 @@ func HandleReover() {
 		fmt.Println("Recovering from panic:", r)
 	}
 }
+
+func HandleReoverMsg(msg string) {
+	if r := recover(); r != nil {
+		fmt.Println(msg, ":", r)
+	}
+}
+
+func HandleReoverPass() {
+	recover()
+}

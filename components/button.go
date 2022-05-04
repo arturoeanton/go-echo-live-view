@@ -20,9 +20,6 @@ func (t *Button) GetDriver() liveview.LiveDriver {
 	return t
 }
 
-func (t *Button) Click(data interface{}) {
-}
-
 func (t *Button) SetClick(fx func(c *Button, data interface{})) *Button {
 	t.Events["Click"] = fx
 	return t

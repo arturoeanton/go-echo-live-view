@@ -2,6 +2,7 @@ package liveview
 
 type None struct {
 	*ComponentDriver[*None]
+	Template string
 }
 
 func (t *None) GetDriver() LiveDriver {
@@ -13,5 +14,5 @@ func (t *None) Start() {
 }
 
 func (t *None) GetTemplate() string {
-	return ``
+	return t.Template
 }

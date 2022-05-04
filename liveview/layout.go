@@ -2,21 +2,25 @@ package liveview
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/arturoeanton/gocommons/utils"
 	"github.com/google/uuid"
+
+	"golang.org/x/net/html"
 )
 
 type Layout struct {
 	*ComponentDriver[*Layout]
-	UUID              string
-	Html              string
-	ChanIn            chan interface{}
-	HandlerEventIn    *func(data interface{})
-	HandlerEventTime  *func()
-	IntervalEventTime time.Duration
+	UUID                string
+	Html                string
+	ChanIn              chan interface{}
+	HandlerEventIn      *func(data interface{})
+	HandlerEventTime    *func()
+	HandlerEventDestroy *func(id string)
+	IntervalEventTime   time.Duration
 }
 
 func (t *Layout) GetDriver() LiveDriver {
@@ -59,12 +63,12 @@ func SendToLayouts(msg interface{}, uuids ...string) {
 	wg.Wait()
 }
 
-func NewLayout(html string) *ComponentDriver[*Layout] {
-	if utils.Exists(html) {
-		html, _ = utils.FileToString(html)
+func NewLayout(paramHtml string) *ComponentDriver[*Layout] {
+	if utils.Exists(paramHtml) {
+		paramHtml, _ = utils.FileToString(paramHtml)
 	}
 	uid := uuid.NewString()
-	c := &Layout{UUID: uid, Html: html, ChanIn: make(chan interface{}, 1), IntervalEventTime: time.Hour * 24}
+	c := &Layout{UUID: uid, Html: paramHtml, ChanIn: make(chan interface{}, 1), IntervalEventTime: time.Hour * 24}
 	MuLayout.Lock()
 	Layaouts[uid] = c
 	MuLayout.Unlock()
@@ -86,6 +90,26 @@ func NewLayout(html string) *ComponentDriver[*Layout] {
 		}
 	}()
 
+	doc, err := html.Parse(strings.NewReader(paramHtml))
+	if err != nil {
+		fmt.Println(err)
+	}
+	var f func(*html.Node)
+	f = func(n *html.Node) {
+		if n.Type == html.ElementNode {
+			for _, a := range n.Attr {
+				if a.Key == "id" {
+					Join(a.Val)
+					break
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			f(c)
+		}
+	}
+	f(doc)
+
 	return c.ComponentDriver
 }
 
@@ -98,6 +122,9 @@ func (t *Layout) SetHandlerEventTime(IntervalEventTime time.Duration, fx func())
 	t.HandlerEventTime = &fx
 }
 
+func (t *Layout) SetHandlerEventDestroy(fx func(id string)) {
+	t.HandlerEventDestroy = &fx
+}
 func (t *Layout) Start() {
 	t.Commit()
 }

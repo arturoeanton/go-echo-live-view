@@ -56,6 +56,16 @@ type LiveDriver interface {
 	GetStyle(string) string
 	GetValue() string
 	GetElementById(string) string
+
+	SetData(interface{})
+}
+
+func (cw *ComponentDriver[T]) SetData(data interface{}) {
+	cw.Data = data
+}
+
+func (cw *ComponentDriver[T]) GetData() interface{} {
+	return cw.Data
 }
 
 // ComponentDriver this is the driver for component, with this struct we can execute our methods in the web
@@ -69,6 +79,7 @@ type ComponentDriver[T Component] struct {
 	channelIn         *map[string]chan interface{}
 	// Events has rewrite of our implementings of  events, examples click, change, keyup, keydown, etc
 	Events map[string]func(c T, data interface{})
+	Data   interface{}
 }
 
 func (cw *ComponentDriver[T]) SetEvent(name string, fx func(c T, data interface{})) {
@@ -130,7 +141,12 @@ func (cw *ComponentDriver[T]) GetDriverById(id string) LiveDriver {
 	if c, ok := cw.componentsDrivers["mount_span_"+id]; ok {
 		return c
 	}
-	return cw.componentsDrivers[id]
+	if c, ok := cw.componentsDrivers[id]; ok {
+		return c
+	}
+	c := &None{}
+	New(id, c)
+	return c
 }
 
 // GetID return id of driver
@@ -160,6 +176,12 @@ func (cw *ComponentDriver[T]) MountWithStart(id string, componentDriver LiveDriv
 	return cw
 }
 
+func Join(ids ...string) {
+	for _, id := range ids {
+		New(id, &None{})
+	}
+}
+
 func New[T Component](id string, c T) T {
 	NewDriver(id, c)
 	componentDriver := c.GetDriver()
@@ -167,6 +189,10 @@ func New[T Component](id string, c T) T {
 	componentDriver.SetID(idMount)
 	componentsDrivers[idMount] = componentDriver
 	return c
+}
+
+func NewWithTemplate(id string, template string) *None {
+	return New(id, &None{Template: template})
 }
 
 // Create Driver with component
@@ -218,8 +244,11 @@ func (cw *ComponentDriver[T]) ExecuteEvent(name string, data interface{}) {
 				return
 			}
 		}
-		in := []reflect.Value{reflect.ValueOf(data)}
-		reflect.ValueOf(cw.Component).MethodByName(name).Call(in)
+		func() {
+			defer HandleReoverPass()
+			in := []reflect.Value{reflect.ValueOf(data)}
+			reflect.ValueOf(cw.Component).MethodByName(name).Call(in)
+		}()
 
 	}(cw)
 }
