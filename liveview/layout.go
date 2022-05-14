@@ -20,6 +20,7 @@ type Layout struct {
 	HandlerEventIn      *func(data interface{})
 	HandlerEventTime    *func()
 	HandlerEventDestroy *func(id string)
+	HandlerFirstTime    *func()
 	IntervalEventTime   time.Duration
 }
 
@@ -76,11 +77,24 @@ func NewLayout(paramHtml string) *ComponentDriver[*Layout] {
 	c.ComponentDriver = NewDriver(uid, c)
 
 	go func() {
+		firstTiem := true
 		for {
 			select {
 			case data := <-c.Component.ChanIn:
 				if c.HandlerEventIn != nil {
 					(*c.HandlerEventIn)(data)
+				}
+			case <-time.After(250 * time.Millisecond):
+				if c.HandlerFirstTime != nil {
+					if firstTiem {
+						firstTiem = false
+						(*c.HandlerFirstTime)()
+					}
+				} else {
+					if firstTiem {
+						firstTiem = false
+						SendToAllLayouts("FIRST_TIME")
+					}
 				}
 			case <-time.After(c.IntervalEventTime):
 				if c.HandlerEventTime != nil {
@@ -113,6 +127,9 @@ func NewLayout(paramHtml string) *ComponentDriver[*Layout] {
 	return c.ComponentDriver
 }
 
+func (t *Layout) SetHandlerFirstTime(fx func()) {
+	t.HandlerFirstTime = &fx
+}
 func (t *Layout) SetHandlerEventIn(fx func(data interface{})) {
 	t.HandlerEventIn = &fx
 }

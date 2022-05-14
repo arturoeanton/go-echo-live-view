@@ -25,7 +25,6 @@ type PageControl struct {
 }
 
 var (
-	//websockets map[string]websocket.Upgrader = make(map[string]websocket.Upgrader)
 	templateBase string = `
 <html lang="{{.Lang}}">
 	<head>
@@ -45,7 +44,7 @@ var (
 		WebAssembly.instantiateStreaming(fetch("assets/json.wasm"), go.importObject).then((result) => {
 			go.run(result.instance);
 		});
-	</script>
+		</script>
 		{{.AfterCode}}
     </body>
 </html>
