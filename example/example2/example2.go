@@ -30,7 +30,7 @@ func main() {
 	}
 	bUser.Set("*", "Todos")
 	home.Register(func() liveview.LiveDriver {
-		document := liveview.NewLayout(`
+		document := liveview.NewLayout("layout1", `
 			<div> Nickname: {{ mount "text_nickname" }} <span id="span_text_nickname"></span>
 			<hr/>
 			<div id="div_general_chat"></div>

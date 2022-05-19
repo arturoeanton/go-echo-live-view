@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/arturoeanton/gocommons/utils"
-	"github.com/google/uuid"
 
 	"golang.org/x/net/html"
 )
@@ -64,11 +63,10 @@ func SendToLayouts(msg interface{}, uuids ...string) {
 	wg.Wait()
 }
 
-func NewLayout(paramHtml string) *ComponentDriver[*Layout] {
+func NewLayout(uid string, paramHtml string) *ComponentDriver[*Layout] {
 	if utils.Exists(paramHtml) {
 		paramHtml, _ = utils.FileToString(paramHtml)
 	}
-	uid := uuid.NewString()
 	c := &Layout{UUID: uid, Html: paramHtml, ChanIn: make(chan interface{}, 1), IntervalEventTime: time.Hour * 24}
 	MuLayout.Lock()
 	Layaouts[uid] = c

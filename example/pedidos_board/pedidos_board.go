@@ -89,44 +89,8 @@ func main() {
 		return ctx.JSON(http.StatusOK, pedido)
 	})
 
-	e.PUT("/pedidos/:id", func(ctx echo.Context) error {
-		defer liveview.SendToAllLayouts("EVENT_UPDATE_PEDIDOS")
-		pedidoMutex.Lock()
-		defer pedidoMutex.Unlock()
-		id := ctx.Param("id")
-		status := ctx.FormValue("estado")
-		if _, ok := pedidos[id]; !ok {
-			return ctx.JSON(http.StatusNotFound, "pedido no encontrado")
-		}
-
-		if status == "" {
-			return ctx.JSON(http.StatusBadRequest, "estado es requerido")
-		}
-
-		if strings.ToLower(status) == "procesando" && pedidos[id].Estado == "Nuevo" {
-			pedidos[id].Estado = "Procesando"
-		}
-		if strings.ToLower(status) == "listo" && pedidos[id].Estado == "Procesando" {
-			pedidos[id].Estado = "Listo"
-		}
-
-		if strings.ToLower(status) == "cancelado" {
-			delete(pedidos, id)
-			return ctx.JSON(http.StatusOK, "Pedido cancelado")
-		}
-		return ctx.JSON(http.StatusOK, pedidos[id])
-	})
-	e.DELETE("/pedidos/{id}", func(ctx echo.Context) error {
-		defer liveview.SendToAllLayouts("EVENT_UPDATE_PEDIDOS")
-		pedidoMutex.Lock()
-		defer pedidoMutex.Unlock()
-		id := ctx.Param("id")
-		delete(pedidos, id)
-		return ctx.JSON(http.StatusNoContent, "")
-	})
-
 	home.Register(func() liveview.LiveDriver {
-		document := liveview.NewLayout(`
+		document := liveview.NewLayout("layout1", `
 
 		{{mount "button_send"}}
 		<hr/>
@@ -161,13 +125,25 @@ func main() {
 			SetClick(func(this *components.Button, data interface{}) {
 				liveview.SendToAllLayouts("EVENT_UPDATE_PEDIDOS")
 			})
+		document.SetEvent("ChangeStatus", func(this *liveview.Layout, message interface{}) {
+			var data map[string]string
+			json.Unmarshal([]byte(message.(string)), &data)
+			id := data["id"]
+			status := data["status"]
+			pedidoMutex.Lock()
+			defer pedidoMutex.Unlock()
+			pedido, ok := pedidos[id]
+			if !ok {
+				return
+			}
+			pedido.Estado = status
+			liveview.SendToAllLayouts("EVENT_UPDATE_PEDIDOS")
+		})
 		document.Component.SetHandlerEventIn(func(data interface{}) {
 			pedidoMutex.Lock()
 			defer pedidoMutex.Unlock()
 			msg := data.(string)
 			if msg == "EVENT_UPDATE_PEDIDOS" || msg == "FIRST_TIME" {
-				divGeneral := document.GetDriverById("div_pedidos_nuevos")
-				html := `<div class="d-flex flex-row  mb-3">`
 				i := 0
 				ppedidos := make([]*Pedido, len(pedidos))
 				for _, pedido := range pedidos {
@@ -178,40 +154,25 @@ func main() {
 					return ppedidos[i].Numero < ppedidos[j].Numero
 				})
 
-				i = 0
-				for _, pedido := range ppedidos {
-					i++
-					if i%5 == 0 {
-						i = 1
-						html += `</div>`
-						html += `<div class="d-flex flex-row  mb-3">`
-					}
-					htmlItems := ""
-					total := 0.0
-					for _, item := range pedido.Items {
-						htmlItems += fmt.Sprintf(`<tr><td>%s</td><td>%d</td><td>$%.2f</td></tr>`, item.Nombre, item.Cantidad, item.Precio)
-						total += item.Precio
-					}
-					pedido.Total = total
-					html += fmt.Sprintf(`
-						<div class="card mt-2 ms-2  " style="width: 18rem;">
-							<div class="card-header">
-								<h5 class="card-title">Mesa:%s Numero:%d</h5>
-							</div>
-							<div class="card-body">
-								<p class="card-text">
-									<table class="table table-striped">
-									<thead><tr><th>Producto</th><th>Cantidad</th><th>Precio</th></tr></thead>
-									<tbody>%s</tbody>
-									</table>
-									<b>Estado:</b> %s<br/>
-									<b>Total:</b> $%.2f
-								</p>
-							</div>
-						</div>`, pedido.Mesa, pedido.Numero, htmlItems, pedido.Estado, pedido.Total)
-				}
-				html += `</div>`
-				divGeneral.FillValue(html)
+				wg := sync.WaitGroup{}
+				wg.Add(4)
+				go func() {
+					defer wg.Done()
+					document.GetDriverById("div_pedidos_nuevos").FillValue(makeHtmlForState("nuevo", ppedidos))
+				}()
+				go func() {
+					defer wg.Done()
+					document.GetDriverById("div_pedidos_procesando").FillValue(makeHtmlForState("procesando", ppedidos))
+				}()
+				go func() {
+					defer wg.Done()
+					document.GetDriverById("div_pedidos_terminados").FillValue(makeHtmlForState("terminado", ppedidos))
+				}()
+				go func() {
+					defer wg.Done()
+					document.GetDriverById("div_pedidos_cancelados").FillValue(makeHtmlForState("cancelado", ppedidos))
+				}()
+				wg.Wait()
 			}
 		})
 
@@ -232,4 +193,69 @@ func main() {
 		return document
 	})
 	e.Logger.Fatal(e.Start(":1323"))
+}
+
+func makeHtmlForState(state string, ppedidos []*Pedido) string {
+	html := `<div class="d-flex flex-row  mb-3">`
+	i := 0
+	for _, pedido := range ppedidos {
+
+		if !strings.EqualFold(pedido.Estado, state) {
+			continue
+		}
+
+		i++
+		if i%5 == 0 {
+			i = 1
+			html += `</div>`
+			html += `<div class="d-flex flex-row  mb-3">`
+		}
+		htmlItems := ""
+		total := 0.0
+		for _, item := range pedido.Items {
+			htmlItems += fmt.Sprintf(`<tr><td>%s</td><td>%d</td><td>$%.2f</td></tr>`, item.Nombre, item.Cantidad, item.Precio)
+			total += item.Precio
+		}
+		pedido.Total = total
+		buttonChangeStateHtml := makeChangeStateButton(pedido.Id, pedido.Estado)
+		html += fmt.Sprintf(`
+			<div class="card mt-2 ms-2  " style="width: 18rem;">
+				<div class="card-header">
+					<h5 class="card-title">Mesa:%s Numero:%d</h5>
+				</div>
+				<div class="card-body">
+					<p class="card-text">
+						<table class="table table-striped">
+						<thead><tr><th>Producto</th><th>Cantidad</th><th>Precio</th></tr></thead>
+						<tbody>%s</tbody>
+						</table>
+						<table class="table table-striped">
+						<tr>
+						<td>
+						<b>Estado:</b> %s<br/>
+						<b>Total:</b> $%.2f
+						</td>
+						<td>
+							%s
+						</td>
+						</tr>
+						</table>
+					</p>
+				</div>
+			</div>`, pedido.Mesa, pedido.Numero, htmlItems, pedido.Estado, pedido.Total, buttonChangeStateHtml)
+	}
+	html += `</div>`
+
+	return html
+}
+
+func makeChangeStateButton(id string, status string) string {
+	if strings.EqualFold(status, "nuevo") {
+		return `<button class="btn btn-primary" onclick="send_event('layout1', 'ChangeStatus', JSON.stringify({id:'` + id + `',status:'procesando'}))">Procesar</button>`
+	}
+	if strings.EqualFold(status, "procesando") {
+		return `<button class="btn btn-primary" onclick="send_event('layout1', 'ChangeStatus', JSON.stringify({id:'` + id + `',status:'terminado'}))">Terminar</button>` +
+			`<button  class="btn btn-danger" onclick="send_event('layout1', 'ChangeStatus', JSON.stringify({id:'` + id + `',status:'cancelado'}))">Cancelar</button>`
+	}
+	return ""
 }

@@ -25,7 +25,7 @@ func main() {
 	}
 
 	home.Register(func() liveview.LiveDriver {
-		document := liveview.NewLayout("example/example3/layout.html")
+		document := liveview.NewLayout("layout1", "example/example3/layout.html")
 		liveview.New("span_result", &liveview.None{})
 		liveview.New("div_text_result", &liveview.None{})
 		liveview.New("text1", &components.InputText{}).SetKeyUp(func(text1 *components.InputText, data interface{}) {
