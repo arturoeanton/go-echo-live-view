@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"text/template"
 
-	"github.com/arturoeanton/gocommons/utils"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 )
@@ -51,19 +50,19 @@ var (
 `
 )
 
-//Register this method to register in router of Echo page and websocket
+// Register this method to register in router of Echo page and websocket
 func (pc *PageControl) Register(fx func() LiveDriver) {
-	if utils.Exists(pc.AfterCode) {
-		pc.AfterCode, _ = utils.FileToString(pc.AfterCode)
+	if Exists(pc.AfterCode) {
+		pc.AfterCode, _ = FileToString(pc.AfterCode)
 	}
-	if utils.Exists(pc.HeadCode) {
-		pc.HeadCode, _ = utils.FileToString(pc.HeadCode)
+	if Exists(pc.HeadCode) {
+		pc.HeadCode, _ = FileToString(pc.HeadCode)
 	}
 	if pc.Lang == "" {
 		pc.Lang = "en"
 	}
-	if utils.Exists("live.js") {
-		pc.LiveJs, _ = utils.FileToString("live.js")
+	if Exists("live.js") {
+		pc.LiveJs, _ = FileToString("live.js")
 	}
 
 	pc.Router.Static("/assets", "assets")

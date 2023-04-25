@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	"github.com/arturoeanton/go-echo-live-view/liveview"
-	"github.com/arturoeanton/gocommons/utils"
 	"github.com/google/uuid"
 
 	"github.com/labstack/echo/v4"
@@ -29,7 +28,7 @@ func (t *Todo) GetDriver() liveview.LiveDriver {
 }
 
 func (t *Todo) Start() {
-	tasksString, _ := utils.FileToString("example/example_todo/tasks.json")
+	tasksString, _ := liveview.FileToString("example/example_todo/tasks.json")
 	t.Tasks = make(map[string]Task)
 	json.Unmarshal([]byte(tasksString), &(t.Tasks))
 	t.Commit()
@@ -37,7 +36,7 @@ func (t *Todo) Start() {
 
 func (t *Todo) GetTemplate() string {
 	if t.code == "" {
-		t.code, _ = utils.FileToString("example/example_todo/todo.html")
+		t.code, _ = liveview.FileToString("example/example_todo/todo.html")
 	}
 	return t.code
 }
@@ -53,7 +52,7 @@ func (t *Todo) Add(data interface{}) {
 	}
 	t.Tasks[id] = task
 	content, _ := json.Marshal(t.Tasks)
-	utils.StringToFile("tasks.json", string(content))
+	liveview.StringToFile("tasks.json", string(content))
 	t.Commit()
 }
 
@@ -61,7 +60,7 @@ func (t *Todo) RemoveTask(data interface{}) {
 	id := data.(string)
 	delete(t.Tasks, id)
 	content, _ := json.Marshal(t.Tasks)
-	utils.StringToFile("tasks.json", string(content))
+	liveview.StringToFile("tasks.json", string(content))
 	t.Commit()
 }
 
@@ -76,7 +75,7 @@ func (t *Todo) Change(data interface{}) {
 	}
 	t.Tasks[id] = task
 	content, _ := json.Marshal(t.Tasks)
-	utils.StringToFile("tasks.json", string(content))
+	liveview.StringToFile("tasks.json", string(content))
 	t.Commit()
 }
 

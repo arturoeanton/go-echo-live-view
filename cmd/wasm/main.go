@@ -59,13 +59,14 @@ func connect() {
 	if protocol == "https:" {
 		uri = "wss:"
 	}
+	fmt.Println("protocol: " + protocol + " uri: " + uri)
 	uri += "//" + loc.Get("host").String()
 	uri += loc.Get("pathname").String() + "ws_goliveview"
 	ws = webSocket.New(uri)
 
 	handlerOnOpen := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		fmt.Println(ws.Get("readyState").Int())
-		fmt.Println("Connected...ok")
+		fmt.Println("Connected...ok!!")
 		return nil
 	})
 
@@ -85,13 +86,14 @@ func connect() {
 		evtData := args[0].Get("data").String()
 		var dataEventIn DataEventIn
 		json.Unmarshal([]byte(evtData), &dataEventIn)
-
 		currentElement := document.Call("getElementById", dataEventIn.ID)
+
 		if currentElement.IsNull() {
 			return nil
 		}
 
 		if dataEventIn.Type == "fill" {
+			fmt.Println("fill")
 			currentElement.Set("innerHTML", dataEventIn.Value)
 			return nil
 		}
@@ -159,9 +161,11 @@ func connect() {
 		return nil
 	})
 
+	fmt.Println("Set handlers...??")
 	ws.Set("onclose", handlerOnClose)
 	ws.Set("onopen", handlerOnOpen)
 	ws.Set("onmessage", handlerOnMessage)
+	fmt.Println("Set handlers...ok!!")
 
 }
 

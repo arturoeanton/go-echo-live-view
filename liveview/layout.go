@@ -6,8 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arturoeanton/gocommons/utils"
-
 	"golang.org/x/net/html"
 )
 
@@ -64,8 +62,8 @@ func SendToLayouts(msg interface{}, uuids ...string) {
 }
 
 func NewLayout(uid string, paramHtml string) *ComponentDriver[*Layout] {
-	if utils.Exists(paramHtml) {
-		paramHtml, _ = utils.FileToString(paramHtml)
+	if Exists(paramHtml) {
+		paramHtml, _ = FileToString(paramHtml)
 	}
 	c := &Layout{UUID: uid, Html: paramHtml, ChanIn: make(chan interface{}, 1), IntervalEventTime: time.Hour * 24}
 	MuLayout.Lock()

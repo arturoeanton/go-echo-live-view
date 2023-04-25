@@ -253,82 +253,82 @@ func (cw *ComponentDriver[T]) ExecuteEvent(name string, data interface{}) {
 	}(cw)
 }
 
-//Remove
+// Remove
 func (cw *ComponentDriver[T]) Remove(id string) {
 	cw.channel <- map[string]interface{}{"type": "remove", "id": id}
 }
 
-//AddNode add node to id
+// AddNode add node to id
 func (cw *ComponentDriver[T]) AddNode(id string, value string) {
 	cw.channel <- map[string]interface{}{"type": "addNode", "id": id, "value": value}
 }
 
-//FillValue is same SetHTML
+// FillValue is same SetHTML
 func (cw *ComponentDriver[T]) FillValueById(id string, value string) {
 	cw.channel <- map[string]interface{}{"type": "fill", "id": id, "value": value}
 }
 
-//FillValue is same SetHTML
+// FillValue is same SetHTML
 func (cw *ComponentDriver[T]) FillValue(value string) {
 	cw.channel <- map[string]interface{}{"type": "fill", "id": cw.GetIDComponet(), "value": value}
 }
 
-//SetHTML is same FillValue :p haha, execute  document.getElementById("$id").innerHTML = $value
+// SetHTML is same FillValue :p haha, execute  document.getElementById("$id").innerHTML = $value
 func (cw *ComponentDriver[T]) SetHTML(value string) {
 	cw.channel <- map[string]interface{}{"type": "fill", "id": cw.GetIDComponet(), "value": value}
 }
 
-//SetText execute document.getElementById("$id").innerText = $value
+// SetText execute document.getElementById("$id").innerText = $value
 func (cw *ComponentDriver[T]) SetText(value string) {
 	cw.channel <- map[string]interface{}{"type": "text", "id": cw.GetIDComponet(), "value": value}
 }
 
-//SetPropertie execute  document.getElementById("$id")[$propertie] = $value
+// SetPropertie execute  document.getElementById("$id")[$propertie] = $value
 func (cw *ComponentDriver[T]) SetPropertie(propertie string, value interface{}) {
 	cw.channel <- map[string]interface{}{"type": "propertie", "id": cw.GetIDComponet(), "propertie": propertie, "value": value}
 }
 
-//SetValue execute document.getElementById("$id").value = $value|
+// SetValue execute document.getElementById("$id").value = $value|
 func (cw *ComponentDriver[T]) SetValue(value interface{}) {
 	cw.channel <- map[string]interface{}{"type": "set", "id": cw.GetIDComponet(), "value": value}
 }
 
-//EvalScript execute eval($code);
+// EvalScript execute eval($code);
 func (cw *ComponentDriver[T]) EvalScript(code string) {
 	cw.channel <- map[string]interface{}{"type": "script", "value": code}
 }
 
-//SetStyle execute  document.getElementById("$id").style.cssText = $style
+// SetStyle execute  document.getElementById("$id").style.cssText = $style
 func (cw *ComponentDriver[T]) SetStyle(style string) {
 	cw.channel <- map[string]interface{}{"type": "style", "id": cw.GetIDComponet(), "value": style}
 }
 
-//GetElementById same as GetValue
+// GetElementById same as GetValue
 func (cw *ComponentDriver[T]) GetElementById(id string) string {
 	return cw.get(id, "value", "")
 }
 
-//GetValue return document.getElementById("$id").value
+// GetValue return document.getElementById("$id").value
 func (cw *ComponentDriver[T]) GetValue() string {
 	return cw.get(cw.GetIDComponet(), "value", "")
 }
 
-//GetStyle  return document.getElementById("$id").style["$propertie"]
+// GetStyle  return document.getElementById("$id").style["$propertie"]
 func (cw *ComponentDriver[T]) GetStyle(propertie string) string {
 	return cw.get(cw.GetIDComponet(), "style", propertie)
 }
 
-//GetHTML  return document.getElementById("$id").innerHTML
+// GetHTML  return document.getElementById("$id").innerHTML
 func (cw *ComponentDriver[T]) GetHTML() string {
 	return cw.get(cw.GetIDComponet(), "html", "")
 }
 
-//GetText  return document.getElementById("$id").innerText
+// GetText  return document.getElementById("$id").innerText
 func (cw *ComponentDriver[T]) GetText() string {
 	return cw.get(cw.GetIDComponet(), "text", "")
 }
 
-//GetPropertie return document.getElementById("$id")[$propertie]
+// GetPropertie return document.getElementById("$id")[$propertie]
 func (cw *ComponentDriver[T]) GetPropertie(name string) string {
 	return cw.get(cw.GetIDComponet(), "propertie", name)
 }
