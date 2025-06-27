@@ -1,185 +1,296 @@
-# go-echo-live-view
-Little POC for test the idea  of Phoenix LiveView in Go and Echo (https://github.com/labstack/echo) 
+# Go Echo LiveView
 
+**Una implementación de Phoenix LiveView en Go usando Echo Framework**
 
-The idea was stolen from  https://github.com/brendonmatos/golive 
+Go Echo LiveView es una biblioteca que permite crear aplicaciones web interactivas y reactivas sin escribir JavaScript del lado cliente. Inspirado en Phoenix LiveView de Elixir, este proyecto utiliza WebSockets para mantener una conexión persistente entre el servidor y el navegador, permitiendo actualizaciones del DOM en tiempo real.
 
+## 🚀 Características Principales
 
+- **Interactividad sin JavaScript**: Escribe toda la lógica en Go, las actualizaciones del DOM se manejan automáticamente
+- **Comunicación en Tiempo Real**: WebSockets para actualizaciones bidireccionales instantáneas
+- **Sistema de Componentes**: Arquitectura modular con componentes reutilizables
+- **Plantillas Dinámicas**: Sistema de templates integrado con Go templates
+- **Integración con WASM**: Soporte opcional para WebAssembly para funcionalidades avanzadas
 
-## Driver Methods
+## 📋 Requisitos
 
-| Method | Description |
-| --- | --- |
-| `Remove` | return document.getElementById("$id").remove() |
-| `GetHTML` | return document.getElementById("$id").innerHTML |
-| `GetText` | return document.getElementById("$id").innerText |
-| `GetPropertie` | return document.getElementById("$id")[$propertie] |
-| `GetValue` | return document.getElementById("$id").value |
-| `GetStyle` | return document.getElementById("$id").style["$propertie"] |
-| `GetElementById` | return document.getElementById("$id").value |
-| `EvalScript` | execute  eval($code);|
-| `FillValue` | document.getElementById("$id").innerHTML = $value |
-| `SetHTML` | document.getElementById("$id").innerHTML = $value |
-| `SetText` | document.getElementById("$id").innerText = $value|
-| `SetPropertie` | document.getElementById("$id")[$propertie] = $value |
-| `SetValue` | document.getElementById("$id").value = $value|
-| `SetStyle` | document.getElementById("$id").style.cssText = $style |
+- **Go 1.20+**
+- **Navegador web moderno** con soporte para WebSockets
+- **gomon** (opcional, para desarrollo con auto-reload)
 
+## 🛠️ Instalación
 
+### 1. Clonar el repositorio
+```bash
+git clone https://github.com/arturoeanton/go-echo-live-view.git
+cd go-echo-live-view
+```
 
-## Example 
+### 2. Instalar dependencias
+```bash
+go mod tidy
+```
 
-```golang
+### 3. (Opcional) Instalar gomon para desarrollo
+```bash
+go install github.com/c9s/gomon@latest
+```
+
+## 🏃‍♂️ Ejecución Rápida
+
+### Método 1: Script automático
+```bash
+./build_and_run.sh
+```
+
+### Método 2: Ejecutar ejemplos individuales
+```bash
+# Ejemplo básico de contador
+go run example/example1/example1.go
+
+# Ejemplo con input de texto
+go run example/example2/example2.go
+
+# Ejemplo de todo list
+go run example/example_todo/example_todo.go
+```
+
+### Método 3: Desarrollo con auto-reload
+```bash
+gomon
+```
+
+Visita `http://localhost:1323` en tu navegador.
+
+## 📖 Uso Básico
+
+### Ejemplo Simple: Contador con Botón
+
+```go
 package main
 
 import (
-	"fmt"
-
-	"github.com/arturoeanton/go-echo-live-view/components"
-	"github.com/arturoeanton/go-echo-live-view/liveview"
-
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+    "fmt"
+    "github.com/arturoeanton/go-echo-live-view/components"
+    "github.com/arturoeanton/go-echo-live-view/liveview"
+    "github.com/labstack/echo/v4"
+    "github.com/labstack/echo/v4/middleware"
 )
 
 func main() {
-	e := echo.New()
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
+    e := echo.New()
+    e.Use(middleware.Logger())
+    e.Use(middleware.Recover())
 
-	home := liveview.PageControl{
-		Title:  "Home",
-		Lang:   "en",
-		Path:   "/",
-		Router: e,
-	}
+    // Configurar página principal
+    home := liveview.PageControl{
+        Title:  "Mi App LiveView",
+        Lang:   "es",
+        Path:   "/",
+        Router: e,
+    }
 
-	home.Register(func() *liveview.ComponentDriver {
+    // Registrar lógica de la página
+    home.Register(func() *liveview.ComponentDriver {
+        // Crear componentes
+        button1 := liveview.NewDriver("contador", &components.Button{Caption: "Incrementar"})
+        contador := 0
 
-		button1 := liveview.NewDriver("button1", &components.Button{Caption: "Sum 1"})
-		text1 := liveview.NewDriver("text1", &components.InputText{})
+        // Definir evento del botón
+        button1.Events["Click"] = func(data interface{}) {
+            contador++
+            button1.FillValue("resultado", fmt.Sprintf("Contador: %d", contador))
+        }
 
-		text1.Events["KeyUp"] = func(data interface{}) {
-			text1.FillValue("div_text_result", data.(string))
-		}
+        // Crear layout con template
+        return components.NewLayout("home", `
+            <div>
+                <h1>Contador LiveView</h1>
+                {{mount "contador"}}
+                <div id="resultado">Contador: 0</div>
+            </div>
+        `).Mount(button1)
+    })
 
-		button1.Events["Click"] = func(data interface{}) {
-			button := button1.Component.(*components.Button)
-			button.I++
-			text := button.Driver.GetElementById("text1")
-			button.Driver.FillValue("span_result", fmt.Sprint(button.I)+" -> "+text)
-			button.Driver.EvalScript("console.log(1)")
-		}
-
-		return components.NewLayout("home", `
-		{{ mount "text1"}}
-		<div id="div_text_result"></div>
-		<div>
-			{{mount "button1"}}
-		</div>
-		<div>
-			<span id="span_result"></span>
-		</div>
-		`).Mount(text1).Mount(button1)
-
-	})
-
-	e.Logger.Fatal(e.Start(":1323"))
+    e.Logger.Fatal(e.Start(":1323"))
 }
 ```
 
-![alt text](https://raw.githubusercontent.com/arturoeanton/go-echo-live-view/main/example/example2/example2.gif)
+## 🏗️ Arquitectura del Sistema
 
+### Componentes Principales
 
-## Interface Component
+1. **PageControl**: Maneja las rutas HTTP y WebSocket
+2. **ComponentDriver**: Proxy entre componentes Go y el DOM del navegador
+3. **Component Interface**: Interface que deben implementar todos los componentes
+4. **Live.js**: Cliente JavaScript que maneja la comunicación WebSocket
 
-```golang
-type Component interface {
-	GetTemplate() string
-	Start()
+### Flujo de Comunicación
+
+```
+Navegador ←→ WebSocket ←→ Echo Server ←→ ComponentDriver ←→ Component Go
+    ↑                                                           ↓
+JavaScript Client                                      Go Templates + Lógica
+```
+
+## 🧩 Componentes Disponibles
+
+### Componentes Base
+- **Button**: Botón interactivo con eventos click
+- **InputText**: Campo de texto con eventos de teclado
+- **Clock**: Reloj que se actualiza automáticamente
+
+### Crear un Componente Personalizado
+
+```go
+type MiComponente struct {
+    *liveview.ComponentDriver[*MiComponente]
+    Valor string
+}
+
+func (c *MiComponente) GetTemplate() string {
+    return `<div id="{{.IdComponent}}">{{.Valor}}</div>`
+}
+
+func (c *MiComponente) Start() {
+    c.Commit() // Renderizar el componente
+}
+
+func (c *MiComponente) GetDriver() liveview.LiveDriver {
+    return c
+}
+
+// Evento personalizado
+func (c *MiComponente) Click(data interface{}) {
+    c.Valor = "¡Clickeado!"
+    c.Commit()
 }
 ```
 
-## Example go-notebook
+## 📁 Estructura del Proyecto
 
-https://github.com/arturoeanton/go-notebook
-
-
-![alt text](https://raw.githubusercontent.com/arturoeanton/go-notebook/main/gonote1.gif)
-
-![alt text](https://raw.githubusercontent.com/arturoeanton/go-notebook/main/gonote2.gif)
-
-![alt text](https://raw.githubusercontent.com/arturoeanton/go-notebook/main/gonote3.png)
-
-
-
-
-## More Examples 
-
-### example_todo
-![alt text](https://raw.githubusercontent.com/arturoeanton/go-echo-live-view/main/example/example_todo/example_todo.gif)
-
-### example1 
-![alt text](https://raw.githubusercontent.com/arturoeanton/go-echo-live-view/main/example/example1/example1.gif)
-
-
-### Example Style
-```golang
-package main
-
-import (
-	"github.com/arturoeanton/go-echo-live-view/components"
-	"github.com/arturoeanton/go-echo-live-view/liveview"
-
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
-)
-
-type Button struct {
-	Driver *liveview.ComponentDriver
-}
-
-func (t *Button) Start() {
-	t.Driver.Commit()
-}
-
-func (t *Button) GetTemplate() string {
-	return `<button id="button1" onclick="send_event(this.id, 'Click')" >Change style</button>`
-}
-
-func (t *Button) Click(data interface{}) {
-	background := t.Driver.GetStyle("button1", "background")
-	if background != "red" {
-		t.Driver.SetStyle("button1", "background: red")
-	} else {
-		t.Driver.SetStyle("button1", "background: blue")
-	}
-}
-
-func main() {
-	e := echo.New()
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
-
-	home := liveview.PageControl{
-		Title:    "Home",
-		HeadCode: "head.html",
-		Lang:     "en",
-		Path:     "/",
-		Router:   e,
-		//	Debug:    true,
-	}
-	home.Register(func() *liveview.ComponentDriver {
-		button1 := liveview.NewDriver("button1", &Button{})
-		return components.NewLayout("home", `<div> {{mount "button1"}} </div>`).Mount(button1)
-	})
-	e.Logger.Fatal(e.Start(":1323"))
-}
 ```
-![alt text](https://raw.githubusercontent.com/arturoeanton/go-echo-live-view/main/example/example_style/example_style.gif)
+├── liveview/           # Core del framework
+│   ├── model.go        # Sistema de componentes y drivers
+│   ├── page_content.go # Manejo de páginas y WebSocket
+│   ├── layout.go       # Sistema de layouts
+│   └── utils.go        # Utilidades
+├── components/         # Componentes reutilizables
+│   ├── button.go
+│   ├── input.go
+│   └── clock.go
+├── example/           # Ejemplos de uso
+│   ├── example1/      # Contador básico
+│   ├── example_todo/  # Lista de tareas
+│   └── pedidos_board/ # Tablero de pedidos
+├── assets/            # Archivos estáticos
+│   ├── json.wasm      # Módulo WebAssembly
+│   └── wasm_exec.js   # Ejecutor WASM
+└── cmd/wasm/          # Código fuente WASM
+```
 
+## 🔧 Desarrollo
 
+### Comandos Útiles
 
+```bash
+# Compilar módulo WASM
+cd cmd/wasm/
+GOOS=js GOARCH=wasm go build -o ../../assets/json.wasm
 
+# Ejecutar con auto-reload (requiere gomon.yaml)
+gomon
 
+# Ejecutar ejemplo específico
+go run example/[nombre_ejemplo]/[nombre_ejemplo].go
+```
 
+### Configuración de gomon
+
+El archivo `gomon.yaml` configura el auto-reload:
+
+```yaml
+name: example
+include: 
+  - ./example
+exclude:
+  - txt
+  - md
+commands:
+  command: sh ./build_and_run.sh
+  terminate: killall example
+extensions:
+  - go
+  - html
+log: true
+```
+
+## 🤝 Contribuir al Proyecto
+
+### Estilo de Código
+
+1. **Seguir convenciones de Go**: `gofmt`, `golint`, `go vet`
+2. **Documentar funciones públicas**: Usar comentarios Go estándar
+3. **Manejo de errores**: Siempre manejar errores explícitamente
+4. **Naming**: Usar nombres descriptivos en inglés para APIs públicas
+
+### Estructura de Pull Requests
+
+1. **Fork** del repositorio
+2. **Crear rama** descriptiva: `feature/nueva-funcionalidad` o `fix/corregir-bug`
+3. **Commits atómicos** con mensajes descriptivos
+4. **Incluir ejemplos** si se añaden nuevas funcionalidades
+5. **Tests**: Añadir tests para nuevas funcionalidades (cuando el framework de testing esté disponible)
+
+### Áreas de Contribución Prioritarias
+
+- **Seguridad**: Mejoras en validación y sanitización
+- **Componentes**: Nuevos componentes reutilizables
+- **Documentación**: Ejemplos y guías
+- **Testing**: Framework de testing para componentes
+- **Performance**: Optimizaciones en comunicación WebSocket
+
+## ⚠️ Advertencias de Seguridad
+
+**IMPORTANTE**: Este proyecto es un POC (Proof of Concept) y NO debe usarse en producción sin revisiones de seguridad significativas.
+
+### Vulnerabilidades Conocidas
+- Ejecución de JavaScript arbitrario via `EvalScript()`
+- Sin validación de entrada en WebSocket
+- Sin autenticación/autorización
+- Posibles XSS en templates
+
+## 📚 Ejemplos Incluidos
+
+### example1 - Reloj Simple
+Reloj que se actualiza cada segundo mostrando la hora actual.
+
+### example2 - Input Interactivo  
+Campo de texto que actualiza el contenido en tiempo real mientras escribes.
+
+### example_todo - Lista de Tareas
+CRUD completo de tareas con persistencia en archivo JSON.
+
+### pedidos_board - Tablero de Pedidos
+Sistema más complejo con múltiples estados y navegación por tabs.
+
+## 🐛 Reportar Bugs
+
+Crea un issue en GitHub incluyendo:
+- **Descripción del problema**
+- **Pasos para reproducir**
+- **Comportamiento esperado vs actual**
+- **Versión de Go y sistema operativo**
+- **Código mínimo que reproduce el error**
+
+## 📄 Licencia
+
+Ver archivo `LICENSE` para detalles.
+
+## 🙏 Créditos
+
+Proyecto inspirado en [golive](https://github.com/brendonmatos/golive) y en Phoenix LiveView de Elixir.
+
+---
+
+**¿Preguntas?** Abre un issue o revisa los ejemplos en la carpeta `example/`.
