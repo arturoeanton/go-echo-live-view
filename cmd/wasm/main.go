@@ -10,6 +10,7 @@ cd -
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"syscall/js"
 )
 
@@ -22,6 +23,7 @@ var (
 	uri       string   = "ws:"
 	ws        js.Value
 	protocol  string = loc.Get("protocol").String()
+	isVerbose bool
 )
 
 type MsgEvent struct {
@@ -86,6 +88,25 @@ func connect() {
 		evtData := args[0].Get("data").String()
 		var dataEventIn DataEventIn
 		json.Unmarshal([]byte(evtData), &dataEventIn)
+		
+		// Debug logging for non-fill messages
+		if isVerbose && dataEventIn.Type != "fill" {
+			fmt.Printf("[WASM] Received message type: %s, ID: %s\n", dataEventIn.Type, dataEventIn.ID)
+		}
+		
+		// Scripts don't need an element ID
+		if dataEventIn.Type == "script" {
+			scriptValue := fmt.Sprint(dataEventIn.Value)
+			if isVerbose {
+				fmt.Printf("[WASM] Executing script: %d bytes\n", len(scriptValue))
+			}
+			result := js.Global().Call("eval", scriptValue)
+			if isVerbose {
+				fmt.Printf("[WASM] Script executed, result: %v\n", result)
+			}
+			return nil
+		}
+		
 		currentElement := document.Call("getElementById", dataEventIn.ID)
 
 		if currentElement.IsNull() {
@@ -122,9 +143,6 @@ func connect() {
 			currentElement.Set("value", dataEventIn.Value)
 		}
 
-		if dataEventIn.Type == "script" {
-			currentElement.Call("eval", dataEventIn.Value)
-		}
 
 		if dataEventIn.Type == "propertie" {
 			currentElement.Set(dataEventIn.Propertie, dataEventIn.Value)
@@ -170,11 +188,22 @@ func connect() {
 }
 
 func main() {
+	// Configurar logging
+	verbose := js.Global().Get("location").Get("search").String()
+	isVerbose = strings.Contains(verbose, "verbose=true") || strings.Contains(verbose, "debug=true")
+	
+	if isVerbose {
+		fmt.Println("[WASM] Verbose mode enabled")
+	}
+	
 	document.Call("getElementById", "content").Set("innerHTML", "Disconnected")
 	connect()
 
 	js.Global().Call("setInterval", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		if ws.Get("readyState").Int() != 1 {
+			if isVerbose {
+				fmt.Println("[WASM] WebSocket disconnected, reconnecting...")
+			}
 			connect()
 		}
 		return nil
@@ -193,9 +222,18 @@ func main() {
 		if len(args) == 3 {
 			data = args[2].String()
 		}
+		if isVerbose {
+			fmt.Printf("[WASM] send_event: id=%s event=%s data=%s\n", id, event, data)
+		}
 		sendEvent(id, event, data)
 		return nil
 	}))
+	
+	// Log inicial
+	if isVerbose {
+		fmt.Println("[WASM] LiveView WASM initialized")
+	}
+	
 	<-make(chan struct{})
 }
 

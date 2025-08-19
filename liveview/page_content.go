@@ -2,10 +2,10 @@ package liveview
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"text/template"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
@@ -39,9 +39,29 @@ var (
 		<div id="content"> 
 		</div>
 		<script>
+		// Global send_event stub until WASM loads
+		window.send_event = function(id, event, data) {
+			console.log('[Pre-WASM] Event queued:', id, event, data);
+			// Queue events until WASM is ready
+			if (!window._eventQueue) window._eventQueue = [];
+			window._eventQueue.push({id, event, data});
+		};
+		
 		const go = new Go();
-		WebAssembly.instantiateStreaming(fetch("assets/json.wasm"), go.importObject).then((result) => {
+		WebAssembly.instantiateStreaming(fetch("assets/json.wasm?v=" + Date.now()), go.importObject).then((result) => {
 			go.run(result.instance);
+			console.log('[WASM] Loaded successfully');
+			
+			// Process queued events
+			if (window._eventQueue && window._eventQueue.length > 0) {
+				console.log('[WASM] Processing', window._eventQueue.length, 'queued events');
+				window._eventQueue.forEach(e => {
+					window.send_event(e.id, e.event, e.data);
+				});
+				window._eventQueue = [];
+			}
+		}).catch(err => {
+			console.error('[WASM] Failed to load:', err);
 		});
 		</script>
 		{{.AfterCode}}
@@ -83,7 +103,7 @@ func (pc *PageControl) Register(fx func() LiveDriver) {
 				MuLayout.Lock()
 				defer MuLayout.Unlock()
 				id := content.GetIDComponet()
-				delete(Layaouts, id)
+				delete(Layouts, id)
 			}()
 			func() {
 				defer func() {
@@ -107,12 +127,23 @@ func (pc *PageControl) Register(fx func() LiveDriver) {
 		//content.SetIDComponent("content")
 
 		channel := make(chan (map[string]interface{}))
-		upgrader := websocket.Upgrader{}
+		upgrader := websocket.Upgrader{
+			// SEC-005: Establecer límites de tamaño de mensaje
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+		}
 		ws, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
 		if err != nil {
 			return err
 		}
 		defer ws.Close()
+		
+		// SEC-005: Configurar límite máximo de mensaje
+		ws.SetReadLimit(MaxMessageSize)
+		
+		// Crear rate limiter para este cliente
+		rateLimiter := NewRateLimiter(100, 60) // 100 mensajes por minuto
+		clientID := c.RealIP()
 
 		drivers := make(map[string]LiveDriver)
 		channelIn := make(map[string](chan interface{}))
@@ -130,6 +161,11 @@ func (pc *PageControl) Register(fx func() LiveDriver) {
 			for {
 				select {
 				case data := <-channel:
+					if pc.Debug {
+						if dataMap, ok := data["type"]; ok && dataMap == "script" {
+							LogWebSocket("Sending", "script message")
+						}
+					}
 					ws.WriteJSON(data)
 				case <-end:
 					return
@@ -144,18 +180,37 @@ func (pc *PageControl) Register(fx func() LiveDriver) {
 				return nil
 			}
 			if pc.Debug {
-				fmt.Println(string(msg))
+				LogWebSocket("Received", string(msg))
 			}
-			var data map[string]interface{}
-			json.Unmarshal(msg, &data)
-			if mtype, ok := data["type"]; ok {
-				if mtype == "data" {
-					param := data["data"]
-					drivers[data["id"].(string)].ExecuteEvent(data["event"].(string), param)
+			
+			// Verificar rate limiting
+			if !rateLimiter.Allow(clientID, time.Now().Unix()) {
+				Warn("Rate limit exceeded for client: %s", clientID)
+				continue
+			}
+			
+			// SEC-002: Validar mensaje WebSocket
+			validatedMsg, err := ValidateWebSocketMessage(msg)
+			if err != nil {
+				// Log error but don't crash
+				Error("Invalid WebSocket message: %v", err)
+				continue
+			}
+			
+			if validatedMsg.Type == "data" {
+				// Validar que el driver existe antes de ejecutar
+				if driver, ok := drivers[validatedMsg.ID]; ok {
+					LogEvent(validatedMsg.ID, validatedMsg.Event, validatedMsg.Data)
+					driver.ExecuteEvent(validatedMsg.Event, validatedMsg.Data)
+				} else {
+					Warn("Driver not found: %s", validatedMsg.ID)
 				}
-				if mtype == "get" {
-					param := data["data"]
-					channelIn[data["id_ret"].(string)] <- param
+			} else if validatedMsg.Type == "get" {
+				// Validar que el canal existe
+				if ch, ok := channelIn[validatedMsg.IdRet]; ok {
+					ch <- validatedMsg.Data
+				} else {
+					Warn("Channel not found: %s", validatedMsg.IdRet)
 				}
 			}
 		}

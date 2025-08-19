@@ -3,7 +3,6 @@ package liveview
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"reflect"
 	"sync"
 	"text/template"
@@ -94,16 +93,34 @@ func (cw *ComponentDriver[T]) GetIDComponet() string {
 func (cw *ComponentDriver[T]) Commit() {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Println("Recovered in Commit:", r)
+			Error("Recovered in Commit: %v", r)
 		}
 	}()
-	t := template.Must(template.New("component").Funcs(FuncMapTemplate).Parse(cw.Component.GetTemplate()))
+	
+	LogComponent(cw.IdComponent, "Commit", "Starting")
+	
+	// SEC-003: Sanitizar template antes de parsear (deshabilitado temporalmente para desarrollo)
+	rawTemplate := cw.Component.GetTemplate()
+	// TODO: Habilitar sanitización en producción
+	// sanitizedTemplate, err := SanitizeTemplate(rawTemplate)
+	// if err != nil {
+	// 	log.Printf("Template sanitization error: %v", err)
+	// 	return
+	// }
+	
+	t := template.Must(template.New("component").Funcs(FuncMapTemplate).Parse(rawTemplate))
 	buf := new(bytes.Buffer)
 	err := t.Execute(buf, cw.Component)
 	if err != nil {
-		log.Println(err)
+		Error("Template execution error: %v", err)
 	}
-	cw.FillValueById(cw.GetID(), buf.String())
+	
+	html := buf.String()
+	LogTemplate(cw.IdComponent, "Rendered", fmt.Sprintf("%d bytes", len(html)))
+	
+	// Always use FillValueById for now
+	// TODO: Implement proper mount preservation without JavaScript
+	cw.FillValueById(cw.GetID(), html)
 }
 
 func (cw *ComponentDriver[T]) StartDriver(drivers *map[string]LiveDriver, channelIn *map[string]chan interface{}, channel chan (map[string]interface{})) {
@@ -246,8 +263,11 @@ func (cw *ComponentDriver[T]) ExecuteEvent(name string, data interface{}) {
 		}
 		func() {
 			defer HandleReoverPass()
-			in := []reflect.Value{reflect.ValueOf(data)}
-			reflect.ValueOf(cw.Component).MethodByName(name).Call(in)
+			method := reflect.ValueOf(cw.Component).MethodByName(name)
+			if method.IsValid() {
+				in := []reflect.Value{reflect.ValueOf(data)}
+				method.Call(in)
+			}
 		}()
 
 	}(cw)
@@ -295,6 +315,7 @@ func (cw *ComponentDriver[T]) SetValue(value interface{}) {
 
 // EvalScript execute eval($code);
 func (cw *ComponentDriver[T]) EvalScript(code string) {
+	Debug("Sending script to client: %d bytes", len(code))
 	cw.channel <- map[string]interface{}{"type": "script", "value": code}
 }
 
