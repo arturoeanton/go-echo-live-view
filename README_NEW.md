@@ -95,8 +95,8 @@ Visit `http://localhost:8080` and see your interactive app without any JavaScrip
 
 - [API Documentation](API_DOCUMENTATION.md) - Complete API reference
 - [Examples](example/) - Working examples and demos
-- [Testing Guide](liveview/testing_test.go) - Testing your components
-- [Component Library](components/) - Built-in components
+- [Testing Guide](docs/testing.md) - Testing your components
+- [Security Guide](docs/security.md) - Security best practices
 
 ## 🧩 Built-in Components
 
@@ -111,8 +111,6 @@ Visit `http://localhost:8080` and see your interactive app without any JavaScrip
 - **Alert**: Dismissible notifications
 - **Dropdown**: Select menus with icons
 - **Card**: Content cards with actions
-- **Breadcrumb**: Navigation breadcrumbs
-- **Tabs**: Native tab components
 
 ### Advanced Components
 - **FileUpload**: Drag-and-drop file uploads
@@ -189,7 +187,7 @@ go test -bench=. ./...
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see the guidelines below:
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ### Development Setup
 
@@ -324,8 +322,8 @@ Visita `http://localhost:8080` y ve tu aplicación interactiva ¡sin JavaScript!
 
 - [Documentación API](API_DOCUMENTATION.md) - Referencia API completa
 - [Ejemplos](example/) - Ejemplos funcionales y demos
-- [Guía de Testing](liveview/testing_test.go) - Prueba tus componentes
-- [Biblioteca de Componentes](components/) - Componentes integrados
+- [Guía de Testing](docs/testing.md) - Prueba tus componentes
+- [Guía de Seguridad](docs/security.md) - Mejores prácticas de seguridad
 
 ## 🧩 Componentes Integrados
 
@@ -340,8 +338,6 @@ Visita `http://localhost:8080` y ve tu aplicación interactiva ¡sin JavaScript!
 - **Alert**: Notificaciones descartables
 - **Dropdown**: Menús de selección con iconos
 - **Card**: Tarjetas de contenido con acciones
-- **Breadcrumb**: Migas de pan de navegación
-- **Tabs**: Componentes de pestañas nativas
 
 ### Componentes Avanzados
 - **FileUpload**: Carga de archivos arrastrar y soltar
@@ -418,7 +414,7 @@ go test -bench=. ./...
 
 ## 🤝 Contribuyendo
 
-¡Damos la bienvenida a las contribuciones! Por favor, consulta las pautas abajo:
+¡Damos la bienvenida a las contribuciones! Por favor, consulta [CONTRIBUTING.md](CONTRIBUTING.md) para las pautas.
 
 ### Configuración de Desarrollo
 

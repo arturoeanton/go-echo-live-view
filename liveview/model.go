@@ -13,77 +13,168 @@ import (
 )
 
 var (
+	// componentsDrivers stores all registered component drivers globally
+	// Used for component lookup and management across the application
 	componentsDrivers map[string]LiveDriver = make(map[string]LiveDriver)
-	mu                sync.Mutex
+	
+	// mu protects concurrent access to componentsDrivers map
+	mu sync.Mutex
 )
 
-// Component it is interface for implement one component
+// Component is the interface that all LiveView components must implement.
+// It defines the core contract for creating interactive, server-rendered components.
 type Component interface {
-	// GetTemplate return html template for render with component in the {{.}}
+	// GetTemplate returns the HTML template string for rendering the component.
+	// The template uses Go's text/template syntax with the component as context {{.}}
 	GetTemplate() string
-	// Start it will invoke in the mount time
+	
+	// Start is called when the component is mounted and initialized.
+	// Use this method to set initial state and perform setup logic.
 	Start()
+	
+	// GetDriver returns the LiveDriver instance associated with this component.
+	// The driver handles WebSocket communication and DOM updates.
 	GetDriver() LiveDriver
 }
 
+// LiveDriver is the interface that manages component lifecycle, WebSocket communication,
+// and DOM manipulation. It acts as the bridge between server-side components and client-side UI.
 type LiveDriver interface {
+	// GetID returns the DOM element ID where this component is rendered
 	GetID() string
+	
+	// SetID sets the DOM element ID for this component
 	SetID(string)
+	
+	// StartDriver initializes the driver with WebSocket channels and driver registry
+	// Deprecated: Use StartDriverWithContext for better resource management
 	StartDriver(*map[string]LiveDriver, *map[string]chan interface{}, chan (map[string]interface{}))
+	
+	// StartDriverWithContext initializes the driver with context support for cancellation
+	// This is the preferred method for starting drivers with proper lifecycle management
 	StartDriverWithContext(ctx context.Context, drivers *map[string]LiveDriver, channelIn *map[string]chan interface{}, channel chan map[string]interface{})
+	
+	// GetIDComponet returns the component's unique identifier
 	GetIDComponet() string
+	
+	// ExecuteEvent triggers a named event on the component with optional data
 	ExecuteEvent(name string, data interface{})
 
+	// GetComponet returns the Component instance managed by this driver
 	GetComponet() Component
+	
+	// Mount attaches a child component to this component
 	Mount(component Component) LiveDriver
+	
+	// MountWithStart mounts and immediately starts a child component
 	MountWithStart(id string, componentDriver LiveDriver) LiveDriver
 
+	// Commit triggers a re-render of the component and sends updates to the client
 	Commit()
+	
+	// Remove removes a DOM element by ID
 	Remove(string)
+	
+	// AddNode adds a new DOM node with specified ID and HTML content
 	AddNode(string, string)
+	
+	// FillValue updates the value of an input element
 	FillValue(string)
+	
+	// SetHTML sets the innerHTML of an element
 	SetHTML(string)
+	
+	// SetText sets the text content of an element
 	SetText(string)
+	
+	// SetPropertie sets a property on a DOM element
 	SetPropertie(string, interface{})
+	
+	// SetValue sets the component's value
 	SetValue(interface{})
+	
+	// EvalScript executes JavaScript code on the client
+	// Warning: Use with caution, prefer other DOM manipulation methods
 	EvalScript(string)
+	
+	// SetStyle updates CSS styles on an element
 	SetStyle(string)
 
+	// FillValueById updates the value of a specific input element by ID
 	FillValueById(id string, value string)
 
+	// GetPropertie retrieves a property value from a DOM element
 	GetPropertie(string) string
+	
+	// GetDriverById returns the driver instance for a specific component ID
 	GetDriverById(id string) LiveDriver
+	
+	// GetText retrieves the text content of the component's root element
 	GetText() string
+	
+	// GetHTML retrieves the HTML content of the component's root element
 	GetHTML() string
+	
+	// GetStyle retrieves a CSS style value from the component's root element
 	GetStyle(string) string
+	
+	// GetValue retrieves the value of the component's root element (for inputs)
 	GetValue() string
+	
+	// GetElementById retrieves the HTML content of a specific element by ID
 	GetElementById(string) string
 
+	// SetData stores arbitrary data associated with the component
 	SetData(interface{})
 }
 
+// SetData stores arbitrary data in the component driver.
+// This data persists across renders and can be used for component state.
 func (cw *ComponentDriver[T]) SetData(data interface{}) {
 	cw.Data = data
 }
 
+// GetData retrieves the arbitrary data stored in the component driver
 func (cw *ComponentDriver[T]) GetData() interface{} {
 	return cw.Data
 }
 
-// ComponentDriver this is the driver for component, with this struct we can execute our methods in the web
+// ComponentDriver is the core driver implementation for LiveView components.
+// It manages the component lifecycle, WebSocket communication, and DOM updates.
+// The generic type T must implement the Component interface.
 type ComponentDriver[T Component] struct {
-	Component         T
-	id                string
-	IdComponent       string
-	channel           chan (map[string]interface{})
+	// Component is the actual component instance being managed
+	Component T
+	
+	// id is the DOM element ID where this component is rendered
+	id string
+	
+	// IdComponent is the unique identifier for this component instance
+	IdComponent string
+	
+	// channel is used to send WebSocket messages to the client
+	channel chan (map[string]interface{})
+	
+	// componentsDrivers stores child component drivers
 	componentsDrivers map[string]LiveDriver
-	DriversPage       *map[string]LiveDriver
-	channelIn         *map[string]chan interface{}
-	// Events has rewrite of our implementings of  events, examples click, change, keyup, keydown, etc
+	
+	// DriversPage is a reference to all drivers on the current page
+	DriversPage *map[string]LiveDriver
+	
+	// channelIn handles incoming WebSocket messages
+	channelIn *map[string]chan interface{}
+	
+	// Events maps event names to handler functions.
+	// Allows dynamic registration of event handlers like click, change, keyup, etc.
 	Events map[string]func(c T, data interface{})
-	Data   interface{}
+	
+	// Data stores arbitrary component data that persists across renders
+	Data interface{}
 }
 
+// SetEvent registers a custom event handler for the component.
+// The handler will be called when the client sends an event with the specified name.
+// Example: SetEvent("CustomClick", func(c *MyComponent, data interface{}) { ... })
 func (cw *ComponentDriver[T]) SetEvent(name string, fx func(c T, data interface{})) {
 	cw.Events[name] = fx
 }
