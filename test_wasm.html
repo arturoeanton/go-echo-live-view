@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WASM Test</title>
+    <script src="assets/wasm_exec.js"></script>
+</head>
+<body>
+    <h1>Testing WASM Loading</h1>
+    <div id="status">Loading...</div>
+    <script>
+        const go = new Go();
+        console.log("Loading WASM...");
+        
+        WebAssembly.instantiateStreaming(fetch("assets/json.wasm"), go.importObject)
+            .then((result) => {
+                console.log("WASM loaded successfully!");
+                document.getElementById("status").innerHTML = "✅ WASM loaded successfully!";
+                go.run(result.instance);
+            })
+            .catch(err => {
+                console.error("WASM failed to load:", err);
+                document.getElementById("status").innerHTML = "❌ Error: " + err.message;
+            });
+    </script>
+</body>
+</html>

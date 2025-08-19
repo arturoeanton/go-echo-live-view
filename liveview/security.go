@@ -118,7 +118,11 @@ func ValidateWebSocketMessage(msgBytes []byte) (*WebSocketMessage, error) {
 
 // isValidID valida que un ID solo contenga caracteres seguros
 func isValidID(id string) bool {
-	if id == "" || len(id) > 100 {
+	// Permitir ID vacío para mensajes iniciales
+	if id == "" {
+		return true
+	}
+	if len(id) > 100 {
 		return false
 	}
 	// Solo permitir alfanuméricos, guiones y underscores
