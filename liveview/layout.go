@@ -27,14 +27,14 @@ func (t *Layout) GetDriver() LiveDriver {
 
 var (
 	MuLayout sync.Mutex         = sync.Mutex{}
-	Layaouts map[string]*Layout = make(map[string]*Layout)
+	Layouts  map[string]*Layout = make(map[string]*Layout)
 )
 
 func SendToAllLayouts(msg interface{}) {
 	MuLayout.Lock()
 	defer MuLayout.Unlock()
 	wg := sync.WaitGroup{}
-	for _, v := range Layaouts {
+	for _, v := range Layouts {
 		wg.Add(1)
 		go func(v *Layout) {
 			defer wg.Done()
@@ -52,7 +52,7 @@ func SendToLayouts(msg interface{}, uuids ...string) {
 		wg.Add(1)
 		go func(uid string) {
 			defer wg.Done()
-			v, ok := Layaouts[uid]
+			v, ok := Layouts[uid]
 			if ok {
 				v.ChanIn <- msg
 			}
@@ -67,7 +67,7 @@ func NewLayout(uid string, paramHtml string) *ComponentDriver[*Layout] {
 	}
 	c := &Layout{UUID: uid, Html: paramHtml, ChanIn: make(chan interface{}, 1), IntervalEventTime: time.Hour * 24}
 	MuLayout.Lock()
-	Layaouts[uid] = c
+	Layouts[uid] = c
 	MuLayout.Unlock()
 	fmt.Println("NewLayout", uid)
 	c.ComponentDriver = NewDriver(uid, c)

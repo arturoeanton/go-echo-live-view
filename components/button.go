@@ -13,7 +13,7 @@ func (t *Button) Start() {
 }
 
 func (t *Button) GetTemplate() string {
-	return `<Button id="{{.IdComponent}}" onclick="send_event(this.id,'Click')" >{{.Caption}}</button>`
+	return `<button id="{{.IdComponent}}" onclick="send_event(this.id,'Click')" >{{.Caption}}</button>`
 }
 
 func (t *Button) GetDriver() liveview.LiveDriver {

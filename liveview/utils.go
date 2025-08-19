@@ -1,7 +1,7 @@
 package liveview
 
 import (
-	"io/ioutil"
+	"fmt"
 	"os"
 )
 
@@ -22,12 +22,22 @@ func Exists(name string) bool {
 }
 
 func FileToString(name string) (string, error) {
-	content, err := ioutil.ReadFile(name)
+	// SEC-004: Validar path traversal
+	if err := ValidatePath(name); err != nil {
+		return "", fmt.Errorf("invalid file path: %w", err)
+	}
+	
+	content, err := os.ReadFile(name)
 	return string(content), err
 }
 
-func StringToFile(filenanme string, content string) error {
+func StringToFile(filename string, content string) error {
+	// SEC-004: Validar path traversal
+	if err := ValidatePath(filename); err != nil {
+		return fmt.Errorf("invalid file path: %w", err)
+	}
+	
 	d1 := []byte(content)
-	err := ioutil.WriteFile(filenanme, d1, 0644)
+	err := os.WriteFile(filename, d1, 0644)
 	return err
 }
