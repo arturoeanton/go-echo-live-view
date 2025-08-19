@@ -12,7 +12,7 @@ import (
 // Example component for testing
 type TestCounter struct {
 	*liveview.ComponentDriver[*TestCounter]
-	Count int
+	Count      int
 	LastAction string
 }
 
@@ -62,11 +62,11 @@ func TestComponentBasics(t *testing.T) {
 	counter := &TestCounter{}
 	td := liveview.NewTestDriver(t, counter, "test-counter")
 	defer td.Cleanup()
-	
+
 	// Test initial state
 	assert.Equal(t, 0, counter.Count)
 	assert.Equal(t, "initialized", counter.LastAction)
-	
+
 	// Test HTML rendering
 	td.AssertHTML(t, `<span id="count">0</span>`)
 	td.AssertHTML(t, `<span id="action">initialized</span>`)
@@ -77,24 +77,24 @@ func TestEventHandling(t *testing.T) {
 	counter := &TestCounter{}
 	td := liveview.NewTestDriver(t, counter, "test-counter")
 	defer td.Cleanup()
-	
+
 	// Test increment
 	err := td.SimulateEvent("Increment", nil)
 	require.NoError(t, err)
 	assert.Equal(t, 1, counter.Count)
 	assert.Equal(t, "incremented", counter.LastAction)
-	
+
 	// Test multiple increments
 	for i := 0; i < 5; i++ {
 		td.SimulateEvent("Increment", nil)
 	}
 	assert.Equal(t, 6, counter.Count)
-	
+
 	// Test decrement
 	td.SimulateEvent("Decrement", nil)
 	assert.Equal(t, 5, counter.Count)
 	assert.Equal(t, "decremented", counter.LastAction)
-	
+
 	// Test reset
 	td.SimulateEvent("Reset", nil)
 	assert.Equal(t, 0, counter.Count)
@@ -106,20 +106,20 @@ func TestHTMLUpdates(t *testing.T) {
 	counter := &TestCounter{}
 	td := liveview.NewTestDriver(t, counter, "test-counter")
 	defer td.Cleanup()
-	
+
 	// Initial HTML
 	td.AssertHTML(t, `<span id="count">0</span>`)
-	
+
 	// After increment
 	td.SimulateEvent("Increment", nil)
 	td.AssertHTML(t, `<span id="count">1</span>`)
 	td.AssertHTML(t, `<span id="action">incremented</span>`)
-	
+
 	// After multiple operations
 	td.SimulateEvent("Increment", nil)
 	td.SimulateEvent("Increment", nil)
 	td.AssertHTML(t, `<span id="count">3</span>`)
-	
+
 	td.SimulateEvent("Reset", nil)
 	td.AssertHTML(t, `<span id="count">0</span>`)
 	td.AssertHTML(t, `<span id="action">reset</span>`)
@@ -128,17 +128,17 @@ func TestHTMLUpdates(t *testing.T) {
 // Test component with child components
 type ParentComponent struct {
 	*liveview.ComponentDriver[*ParentComponent]
-	Title string
+	Title        string
 	ChildCounter *TestCounter
 }
 
 func (p *ParentComponent) Start() {
 	p.Title = "Parent Component"
-	
+
 	// Mount child component
 	p.ChildCounter = &TestCounter{}
 	p.Mount(liveview.New("child-counter", p.ChildCounter))
-	
+
 	p.Commit()
 }
 
@@ -159,14 +159,14 @@ func TestComponentComposition(t *testing.T) {
 	parent := &ParentComponent{}
 	td := liveview.NewTestDriver(t, parent, "test-parent")
 	defer td.Cleanup()
-	
+
 	// Test parent initialization
 	assert.Equal(t, "Parent Component", parent.Title)
 	assert.NotNil(t, parent.ChildCounter)
-	
+
 	// Test child component state
 	assert.Equal(t, 0, parent.ChildCounter.Count)
-	
+
 	// Test events on child component
 	td.SimulateEventWithID("child-counter", "Increment", nil)
 	assert.Equal(t, 1, parent.ChildCounter.Count)
@@ -176,7 +176,7 @@ func TestComponentComposition(t *testing.T) {
 func TestMockWebSocketClient(t *testing.T) {
 	// Create test suite
 	suite := liveview.NewComponentTestSuite()
-	
+
 	// Register test component
 	suite.RegisterComponent("/", func() liveview.LiveDriver {
 		counter := &TestCounter{}
@@ -184,23 +184,23 @@ func TestMockWebSocketClient(t *testing.T) {
 		counter.ComponentDriver = driver
 		return driver
 	})
-	
+
 	// Start server
 	suite.Start()
 	defer suite.Stop()
-	
+
 	// Create WebSocket client
 	client := liveview.NewMockWebSocketClient(suite.GetWebSocketURL())
-	
+
 	// Connect
 	err := client.Connect()
 	require.NoError(t, err)
 	defer client.Close()
-	
+
 	// Send event
 	err = client.SendEvent("counter", "Increment", nil)
 	require.NoError(t, err)
-	
+
 	// Wait for response
 	msg, err := client.WaitForMessage("fill", 2*time.Second)
 	require.NoError(t, err)
@@ -211,21 +211,21 @@ func TestMockWebSocketClient(t *testing.T) {
 func BenchmarkComponentRendering(b *testing.B) {
 	counter := &TestCounter{}
 	counter.Start()
-	
+
 	liveview.BenchmarkComponent(b, counter)
 }
 
 // Benchmark event handling
 func BenchmarkEventHandling(b *testing.B) {
 	counter := &TestCounter{}
-	
-	liveview.BenchmarkEvent(b, counter, "Increment", nil)
+
+	liveview.BenchmarkEventHandling(b, counter, "Increment", nil)
 }
 
 // Integration test example
 func TestIntegration(t *testing.T) {
 	suite, client := liveview.CreateIntegrationTest(t)
-	
+
 	// Register component
 	suite.RegisterComponent("/test", func() liveview.LiveDriver {
 		counter := &TestCounter{}
@@ -233,15 +233,15 @@ func TestIntegration(t *testing.T) {
 		counter.ComponentDriver = driver
 		return driver
 	})
-	
+
 	// Connect client
 	err := client.Connect()
 	require.NoError(t, err)
-	
+
 	// Send events and verify responses
 	err = client.SendEvent("counter", "Increment", nil)
 	require.NoError(t, err)
-	
+
 	// Wait for update
 	msg, err := client.WaitForMessage("fill", 2*time.Second)
 	require.NoError(t, err)
@@ -253,22 +253,22 @@ func TestHelperFunctions(t *testing.T) {
 	counter := &TestCounter{}
 	td := liveview.NewTestDriver(t, counter, "test-counter")
 	defer td.Cleanup()
-	
+
 	// Test SimulateClick helper
 	err := liveview.SimulateClick(td, "test-counter")
 	require.NoError(t, err)
-	
+
 	// Test SimulateInput helper
 	err = liveview.SimulateInput(td, "input-field", "test value")
 	require.NoError(t, err)
-	
+
 	// Test WaitForCondition
 	done := false
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		done = true
 	}()
-	
+
 	err = liveview.WaitForCondition(1*time.Second, func() bool {
 		return done
 	})

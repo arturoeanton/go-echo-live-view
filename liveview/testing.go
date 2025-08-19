@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
+	"html/template"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -20,16 +20,16 @@ import (
 // TestDriver provides a test harness for LiveView components.
 // It simulates WebSocket communication and DOM updates for testing.
 type TestDriver struct {
-	Component   Component
-	Driver      LiveDriver
-	Messages    []map[string]interface{}
-	DOMUpdates  map[string]string
-	EventQueue  []Event
-	Context     context.Context
-	CancelFunc  context.CancelFunc
-	wsConn      *websocket.Conn
-	server      *httptest.Server
-	echoServer  *echo.Echo
+	Component  Component
+	Driver     LiveDriver
+	Messages   []map[string]interface{}
+	DOMUpdates map[string]string
+	EventQueue []Event
+	Context    context.Context
+	CancelFunc context.CancelFunc
+	wsConn     *websocket.Conn
+	server     *httptest.Server
+	echoServer *echo.Echo
 }
 
 // Event represents a test event to be sent to a component
@@ -42,14 +42,14 @@ type Event struct {
 // NewTestDriver creates a new test driver for a component
 func NewTestDriver(t *testing.T, component Component, componentID string) *TestDriver {
 	driver := NewDriver(componentID, component)
-	
+
 	// Set the driver on the component if it has a ComponentDriver field
 	if setter, ok := component.(interface{ SetDriver(LiveDriver) }); ok {
 		setter.SetDriver(driver)
 	}
-	
+
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	td := &TestDriver{
 		Component:  component,
 		Driver:     driver,
@@ -59,10 +59,10 @@ func NewTestDriver(t *testing.T, component Component, componentID string) *TestD
 		Context:    ctx,
 		CancelFunc: cancel,
 	}
-	
+
 	// Initialize component
 	component.Start()
-	
+
 	return td
 }
 
@@ -80,30 +80,30 @@ func (td *TestDriver) SimulateEventWithID(componentID, eventName string, data in
 		Data:        data,
 	}
 	td.EventQueue = append(td.EventQueue, event)
-	
+
 	// Find and execute on the specific driver
 	if driver := td.Driver.GetDriverById(componentID); driver != nil {
 		driver.ExecuteEvent(eventName, data)
 	}
-	
+
 	return nil
 }
 
 // GetHTML returns the rendered HTML of the component
 func (td *TestDriver) GetHTML() (string, error) {
 	tmpl := td.Component.GetTemplate()
-	
+
 	// Parse and execute template
 	t, err := ParseTemplate(tmpl)
 	if err != nil {
 		return "", err
 	}
-	
+
 	var buf bytes.Buffer
 	if err := t.Execute(&buf, td.Component); err != nil {
 		return "", err
 	}
-	
+
 	return buf.String(), nil
 }
 
@@ -141,11 +141,11 @@ func (td *TestDriver) Cleanup() {
 
 // MockWebSocketClient provides a mock WebSocket client for testing
 type MockWebSocketClient struct {
-	URL             string
-	Messages        []interface{}
+	URL              string
+	Messages         []interface{}
 	ReceivedMessages []map[string]interface{}
-	conn            *websocket.Conn
-	connected       bool
+	conn             *websocket.Conn
+	connected        bool
 }
 
 // NewMockWebSocketClient creates a new mock WebSocket client
@@ -163,18 +163,18 @@ func (c *MockWebSocketClient) Connect() error {
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 5 * time.Second,
 	}
-	
+
 	conn, _, err := dialer.Dial(c.URL, nil)
 	if err != nil {
 		return err
 	}
-	
+
 	c.conn = conn
 	c.connected = true
-	
+
 	// Start reading messages
 	go c.readMessages()
-	
+
 	return nil
 }
 
@@ -198,14 +198,14 @@ func (c *MockWebSocketClient) SendEvent(componentID, eventName string, data inte
 	if !c.connected {
 		return fmt.Errorf("not connected")
 	}
-	
+
 	msg := map[string]interface{}{
 		"type":  "data",
 		"id":    componentID,
 		"event": eventName,
 		"data":  data,
 	}
-	
+
 	return c.conn.WriteJSON(msg)
 }
 
@@ -214,7 +214,7 @@ func (c *MockWebSocketClient) SendMessage(msg interface{}) error {
 	if !c.connected {
 		return fmt.Errorf("not connected")
 	}
-	
+
 	return c.conn.WriteJSON(msg)
 }
 
@@ -230,7 +230,7 @@ func (c *MockWebSocketClient) Close() error {
 // WaitForMessage waits for a specific message type with timeout
 func (c *MockWebSocketClient) WaitForMessage(msgType string, timeout time.Duration) (map[string]interface{}, error) {
 	deadline := time.Now().Add(timeout)
-	
+
 	for time.Now().Before(deadline) {
 		for _, msg := range c.ReceivedMessages {
 			if t, ok := msg["type"].(string); ok && t == msgType {
@@ -239,7 +239,7 @@ func (c *MockWebSocketClient) WaitForMessage(msgType string, timeout time.Durati
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	
+
 	return nil, fmt.Errorf("timeout waiting for message type: %s", msgType)
 }
 
@@ -345,20 +345,20 @@ func BenchmarkComponent(b *testing.B, component Component) {
 		Component: component,
 		Driver:    NewDriver("bench", component),
 	}
-	
+
 	component.Start()
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = td.GetHTML()
 	}
 }
 
-// BenchmarkEvent benchmarks event handling
-func BenchmarkEvent(b *testing.B, component Component, eventName string, data interface{}) {
+// BenchmarkEventHandling benchmarks event handling
+func BenchmarkEventHandling(b *testing.B, component Component, eventName string, data interface{}) {
 	driver := NewDriver("bench", component)
 	component.Start()
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		driver.ExecuteEvent(eventName, data)
@@ -371,28 +371,28 @@ func BenchmarkEvent(b *testing.B, component Component, eventName string, data in
 func CreateIntegrationTest(t *testing.T) (*ComponentTestSuite, *MockWebSocketClient) {
 	suite := NewComponentTestSuite()
 	suite.Start()
-	
+
 	client := NewMockWebSocketClient(suite.GetWebSocketURL())
-	
+
 	t.Cleanup(func() {
 		client.Close()
 		suite.Stop()
 	})
-	
+
 	return suite, client
 }
 
 // WaitForCondition waits for a condition to be true with timeout
 func WaitForCondition(timeout time.Duration, condition func() bool) error {
 	deadline := time.Now().Add(timeout)
-	
+
 	for time.Now().Before(deadline) {
 		if condition() {
 			return nil
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	
+
 	return fmt.Errorf("condition not met within timeout")
 }
 

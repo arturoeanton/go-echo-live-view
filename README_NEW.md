@@ -476,7 +476,6 @@ Licencia MIT - ver archivo [LICENSE](LICENSE)
 
 - **GitHub Issues**: [Reportar problemas](https://github.com/arturoeanton/go-echo-live-view/issues)
 - **Discussions**: [Preguntas y discusiones](https://github.com/arturoeanton/go-echo-live-view/discussions)
-- **Email**: arturoeanton@gmail.com
 
 ## 🌐 Comunidad
 
