@@ -1,6 +1,7 @@
 package liveview
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -19,6 +20,8 @@ type Layout struct {
 	HandlerEventDestroy *func(id string)
 	HandlerFirstTime    *func()
 	IntervalEventTime   time.Duration
+	ctx                 context.Context    // MEM-002: Context para control de goroutines
+	cancel              context.CancelFunc // MEM-002: Función para cancelar context
 }
 
 func (t *Layout) GetDriver() LiveDriver {
@@ -65,37 +68,73 @@ func NewLayout(uid string, paramHtml string) *ComponentDriver[*Layout] {
 	if Exists(paramHtml) {
 		paramHtml, _ = FileToString(paramHtml)
 	}
-	c := &Layout{UUID: uid, Html: paramHtml, ChanIn: make(chan interface{}, 1), IntervalEventTime: time.Hour * 24}
+	
+	// MEM-002: Crear context para control de goroutines
+	ctx, cancel := context.WithCancel(context.Background())
+	
+	// MEM-001: Channel con buffer para evitar bloqueos
+	c := &Layout{
+		UUID:              uid,
+		Html:              paramHtml,
+		ChanIn:            make(chan interface{}, 10),
+		IntervalEventTime: time.Hour * 24,
+		ctx:               ctx,
+		cancel:            cancel,
+	}
+	
+	// MEM-003: Protección con mutex para acceso concurrente
 	MuLayout.Lock()
 	Layouts[uid] = c
 	MuLayout.Unlock()
+	
 	fmt.Println("NewLayout", uid)
 	c.ComponentDriver = NewDriver(uid, c)
 
+	// MEM-002: Goroutine con context para cancelación controlada
 	go func() {
-		firstTiem := true
+		defer func() {
+			// MEM-001: Cerrar channel al terminar
+			close(c.ChanIn)
+			// Limpiar de Layouts
+			MuLayout.Lock()
+			delete(Layouts, uid)
+			MuLayout.Unlock()
+		}()
+		
+		firstTime := true
+		firstTimer := time.NewTimer(250 * time.Millisecond)
+		eventTimer := time.NewTimer(c.IntervalEventTime)
+		
 		for {
 			select {
-			case data := <-c.Component.ChanIn:
+			case <-ctx.Done():
+				// Context cancelado, salir limpiamente
+				return
+				
+			case data, ok := <-c.ChanIn:
+				if !ok {
+					return // Channel cerrado
+				}
 				if c.HandlerEventIn != nil {
 					(*c.HandlerEventIn)(data)
 				}
-			case <-time.After(250 * time.Millisecond):
-				if c.HandlerFirstTime != nil {
-					if firstTiem {
-						firstTiem = false
+				
+			case <-firstTimer.C:
+				if firstTime {
+					firstTime = false
+					if c.HandlerFirstTime != nil {
 						(*c.HandlerFirstTime)()
-					}
-				} else {
-					if firstTiem {
-						firstTiem = false
+					} else {
 						SendToAllLayouts("FIRST_TIME")
 					}
 				}
-			case <-time.After(c.IntervalEventTime):
+				
+			case <-eventTimer.C:
 				if c.HandlerEventTime != nil {
 					(*c.HandlerEventTime)()
 				}
+				// Reiniciar timer
+				eventTimer.Reset(c.IntervalEventTime)
 			}
 		}
 	}()
@@ -137,6 +176,16 @@ func (t *Layout) SetHandlerEventTime(IntervalEventTime time.Duration, fx func())
 
 func (t *Layout) SetHandlerEventDestroy(fx func(id string)) {
 	t.HandlerEventDestroy = &fx
+}
+
+// MEM-002: Método para limpiar y cancelar el Layout
+func (t *Layout) Destroy() {
+	if t.cancel != nil {
+		t.cancel()
+	}
+	if t.HandlerEventDestroy != nil {
+		(*t.HandlerEventDestroy)(t.UUID)
+	}
 }
 func (t *Layout) Start() {
 	t.Commit()

@@ -2,10 +2,12 @@ package liveview
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"reflect"
 	"sync"
 	"text/template"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -28,6 +30,7 @@ type LiveDriver interface {
 	GetID() string
 	SetID(string)
 	StartDriver(*map[string]LiveDriver, *map[string]chan interface{}, chan (map[string]interface{}))
+	StartDriverWithContext(ctx context.Context, drivers *map[string]LiveDriver, channelIn *map[string]chan interface{}, channel chan map[string]interface{})
 	GetIDComponet() string
 	ExecuteEvent(name string, data interface{})
 
@@ -124,28 +127,55 @@ func (cw *ComponentDriver[T]) Commit() {
 }
 
 func (cw *ComponentDriver[T]) StartDriver(drivers *map[string]LiveDriver, channelIn *map[string]chan interface{}, channel chan (map[string]interface{})) {
+	// MEM-002: Delegar a la versión con context
+	cw.StartDriverWithContext(context.Background(), drivers, channelIn, channel)
+}
+
+func (cw *ComponentDriver[T]) StartDriverWithContext(ctx context.Context, drivers *map[string]LiveDriver, channelIn *map[string]chan interface{}, channel chan map[string]interface{}) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Println("Recovered in f", r)
+			fmt.Println("Recovered in StartDriverWithContext", r)
 		}
 	}()
+	
+	// MEM-003: Proteger acceso concurrente con mutex
 	cw.channel = channel
 	cw.channelIn = channelIn
 	cw.Component.Start()
 	cw.DriversPage = drivers
+	
 	mu.Lock()
 	(*drivers)[cw.GetIDComponet()] = cw
 	mu.Unlock()
+	
 	var wg sync.WaitGroup
 	for _, c := range cw.componentsDrivers {
 		wg.Add(1)
 		go func(c LiveDriver) {
 			defer HandleReover()
 			defer wg.Done()
-			c.StartDriver(drivers, channelIn, channel)
+			// MEM-002: Propagar context a componentes hijos
+			c.StartDriverWithContext(ctx, drivers, channelIn, channel)
 		}(c)
 	}
-	wg.Wait()
+	
+	// MEM-002: Esperar con timeout usando context
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	
+	select {
+	case <-done:
+		// Todos los drivers iniciados correctamente
+	case <-ctx.Done():
+		// Context cancelado, detener espera
+		Warn("Context cancelled while starting drivers for %s", cw.GetIDComponet())
+	case <-time.After(30 * time.Second):
+		// Timeout de seguridad
+		Error("Timeout starting drivers for %s", cw.GetIDComponet())
+	}
 }
 
 // GetID return id of driver
@@ -185,11 +215,13 @@ func (cw *ComponentDriver[T]) Mount(component Component) LiveDriver {
 	return cw
 }
 
-// Mount mount component in other component"mount_span_" +
+// Mount mount component in other component
 func (cw *ComponentDriver[T]) MountWithStart(id string, componentDriver LiveDriver) LiveDriver {
 	componentDriver.SetID(id)
 	cw.componentsDrivers[id] = componentDriver
-	componentDriver.StartDriver(cw.DriversPage, cw.channelIn, cw.channel)
+	// MEM-002: Usar context al montar componente
+	ctx := context.Background()
+	componentDriver.StartDriverWithContext(ctx, cw.DriversPage, cw.channelIn, cw.channel)
 	return cw
 }
 
@@ -356,12 +388,25 @@ func (cw *ComponentDriver[T]) GetPropertie(name string) string {
 
 func (cw *ComponentDriver[T]) get(id string, subType string, value string) string {
 	uid := uuid.NewString()
-	(*cw.channelIn)[uid] = make(chan interface{})
-	defer delete((*cw.channelIn), uid)
+	// MEM-001: Crear channel con buffer para evitar bloqueos
+	ch := make(chan interface{}, 1)
+	(*cw.channelIn)[uid] = ch
+	// MEM-001: Asegurar limpieza del channel
+	defer func() {
+		delete((*cw.channelIn), uid)
+		close(ch)
+	}()
+	
 	cw.channel <- map[string]interface{}{"type": "get", "id": id, "value": value, "id_ret": uid, "sub_type": subType}
-	data := <-(*cw.channelIn)[uid]
-	if data != nil {
-		return fmt.Sprint(data)
+	
+	// MEM-004: Agregar timeout para evitar bloqueo indefinido
+	select {
+	case data := <-ch:
+		if data != nil {
+			return fmt.Sprint(data)
+		}
+	case <-time.After(5 * time.Second):
+		Warn("Timeout waiting for response in get() for id: %s", id)
 	}
 	return ""
 }

@@ -2,6 +2,7 @@ package liveview
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"text/template"
@@ -126,7 +127,10 @@ func (pc *PageControl) Register(fx func() LiveDriver) {
 		content.SetID("content")
 		//content.SetIDComponent("content")
 
-		channel := make(chan (map[string]interface{}))
+		// MEM-001: Crear channel con buffer y asegurar cierre
+		channel := make(chan map[string]interface{}, 10)
+		defer close(channel)
+		
 		upgrader := websocket.Upgrader{
 			// SEC-005: Establecer límites de tamaño de mensaje
 			ReadBufferSize:  1024,
@@ -146,39 +150,82 @@ func (pc *PageControl) Register(fx func() LiveDriver) {
 		clientID := c.RealIP()
 
 		drivers := make(map[string]LiveDriver)
-		channelIn := make(map[string](chan interface{}))
+		channelIn := make(map[string]chan interface{})
+		
+		// MEM-001: Usar context para cancelación coordinada
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 
 		go func() {
 			defer HandleReover()
-			content.StartDriver(&drivers, &channelIn, channel)
+			content.StartDriverWithContext(ctx, &drivers, &channelIn, channel)
 		}()
-		end := make(chan bool)
-		defer func() {
-			end <- true
-		}()
+		
+		// MEM-001: Usar done channel sin buffer
+		done := make(chan struct{})
+		defer close(done)
 		go func() {
 			defer HandleReover()
 			for {
 				select {
-				case data := <-channel:
+				case data, ok := <-channel:
+					if !ok {
+						// Channel cerrado, salir
+						return
+					}
 					if pc.Debug {
 						if dataMap, ok := data["type"]; ok && dataMap == "script" {
 							LogWebSocket("Sending", "script message")
 						}
 					}
-					ws.WriteJSON(data)
-				case <-end:
+					// MEM-004: Agregar timeout para escritura
+					ws.SetWriteDeadline(time.Now().Add(10 * time.Second))
+					if err := ws.WriteJSON(data); err != nil {
+						Warn("Error writing to WebSocket: %v", err)
+						return
+					}
+				case <-ctx.Done():
+					return
+				case <-done:
 					return
 				}
 			}
 		}()
 
+		// MEM-004: Configurar timeouts para el WebSocket
+		ws.SetReadDeadline(time.Now().Add(60 * time.Second))
+		ws.SetPongHandler(func(string) error {
+			ws.SetReadDeadline(time.Now().Add(60 * time.Second))
+			return nil
+		})
+		
+		// Ping periódico para mantener la conexión viva
+		go func() {
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					ws.SetWriteDeadline(time.Now().Add(10 * time.Second))
+					if err := ws.WriteMessage(websocket.PingMessage, nil); err != nil {
+						return
+					}
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+		
 		for {
 			_, msg, err := ws.ReadMessage()
 			if err != nil {
-				//c.Logger().Error(err)
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+					Error("WebSocket error: %v", err)
+				}
 				return nil
 			}
+			// Reset read deadline on successful read
+			ws.SetReadDeadline(time.Now().Add(60 * time.Second))
 			if pc.Debug {
 				LogWebSocket("Received", string(msg))
 			}
@@ -208,7 +255,12 @@ func (pc *PageControl) Register(fx func() LiveDriver) {
 			} else if validatedMsg.Type == "get" {
 				// Validar que el canal existe
 				if ch, ok := channelIn[validatedMsg.IdRet]; ok {
-					ch <- validatedMsg.Data
+					// MEM-001: Usar select con timeout para evitar bloqueos
+					select {
+					case ch <- validatedMsg.Data:
+					case <-time.After(5 * time.Second):
+						Warn("Timeout sending to channel: %s", validatedMsg.IdRet)
+					}
 				} else {
 					Warn("Channel not found: %s", validatedMsg.IdRet)
 				}
