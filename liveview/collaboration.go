@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -181,6 +182,8 @@ func (r *CollaborationRoom) handleLeave(userID string) {
 
 // handleBroadcast sends message to all participants
 func (r *CollaborationRoom) handleBroadcast(msg BroadcastMessage) {
+	fmt.Printf("[DEBUG] handleBroadcast: type=%s, from=%s\n", msg.Type, msg.From)
+	
 	r.mu.RLock()
 	participants := make([]*Participant, 0, len(r.Participants))
 	for _, p := range r.Participants {
@@ -188,12 +191,19 @@ func (r *CollaborationRoom) handleBroadcast(msg BroadcastMessage) {
 	}
 	r.mu.RUnlock()
 
+	fmt.Printf("[DEBUG] Broadcasting to %d participants\n", len(participants))
+
 	// Send to all participants
 	for _, p := range participants {
 		if p.Driver != nil && p.ID != msg.From {
-			// Send message to client via properties
+			// Send message to client via JavaScript function call
 			msgJSON, _ := json.Marshal(msg)
-			p.Driver.SetPropertie("collaborationMessage", string(msgJSON))
+			escapedJSON := strings.ReplaceAll(string(msgJSON), "'", "\\'")
+			script := fmt.Sprintf("send_event('%s', 'HandleCollaborationMessage', '%s');", p.Driver.GetIDComponet(), escapedJSON)
+			fmt.Printf("[DEBUG] Sending script to participant %s: %s\n", p.ID, script)
+			p.Driver.EvalScript(script)
+		} else {
+			fmt.Printf("[DEBUG] Skipping participant %s (no driver or same user)\n", p.ID)
 		}
 	}
 }
@@ -249,6 +259,8 @@ func (r *CollaborationRoom) Leave(userID string) {
 
 // Broadcast sends a message to all participants
 func (r *CollaborationRoom) Broadcast(msgType string, from string, data interface{}) {
+	fmt.Printf("[DEBUG] Room.Broadcast called: type=%s, from=%s, participants=%d\n", msgType, from, len(r.Participants))
+	
 	msg := BroadcastMessage{
 		Type:      msgType,
 		From:      from,
@@ -258,8 +270,9 @@ func (r *CollaborationRoom) Broadcast(msgType string, from string, data interfac
 
 	select {
 	case r.broadcast <- msg:
+		fmt.Printf("[DEBUG] Message sent to broadcast channel\n")
 	case <-time.After(time.Second):
-		// Timeout
+		fmt.Printf("[ERROR] Broadcast timeout\n")
 	}
 }
 
@@ -418,8 +431,12 @@ func (c *CollaborativeComponent) Start() {
 
 // BroadcastAction broadcasts an action to all participants
 func (c *CollaborativeComponent) BroadcastAction(action string, data interface{}) {
+	fmt.Printf("[DEBUG] BroadcastAction called: action=%s, userID=%s, data=%+v\n", action, c.UserID, data)
 	if c.Room != nil {
+		fmt.Printf("[DEBUG] Room exists, broadcasting...\n")
 		c.Room.Broadcast(action, c.UserID, data)
+	} else {
+		fmt.Printf("[ERROR] No room available for broadcast\n")
 	}
 }
 

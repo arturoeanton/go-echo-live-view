@@ -95,7 +95,41 @@ type UserActivity struct {
 
 // Start initializes the Kanban board
 func (k *KanbanBoard) Start() {
-	// Initialize board structure
+	// Initialize collaboration first - use fixed room ID so all users join same room
+	if k.CollaborativeComponent == nil {
+		k.CollaborativeComponent = &liveview.CollaborativeComponent{}
+	}
+	k.CollaborativeComponent.Driver = k.ComponentDriver
+	roomID := "kanban_shared_room" // Fixed room ID for all users
+	userID := fmt.Sprintf("user_%d", time.Now().UnixNano()) // Unique user ID
+	k.StartCollaboration(roomID, userID, fmt.Sprintf("User-%d", time.Now().UnixNano()%10000))
+
+	// Get shared state from room if it exists
+	if k.Room != nil {
+		sharedState := k.Room.GetState()
+		fmt.Printf("[DEBUG] SharedState from room: %+v\n", sharedState)
+		if boardData, ok := sharedState.(map[string]interface{}); ok && len(boardData) > 0 {
+			// Load from shared state
+			fmt.Printf("[DEBUG] Loading from shared state with %d items\n", len(boardData))
+			k.loadFromSharedState(boardData)
+		} else {
+			// Initialize default state and save to room
+			fmt.Printf("[DEBUG] No shared state found, initializing default\n")
+			k.initializeDefaultState()
+			k.saveToSharedState()
+		}
+	} else {
+		// Fallback: initialize default state
+		fmt.Printf("[DEBUG] No room available, using default state\n")
+		k.initializeDefaultState()
+	}
+
+	k.ActiveUsers = make(map[string]*UserActivity)
+	k.Commit()
+}
+
+// initializeDefaultState sets up the default board structure
+func (k *KanbanBoard) initializeDefaultState() {
 	k.Title = "Project Board"
 	k.Description = "Collaborative task management"
 
@@ -154,15 +188,60 @@ func (k *KanbanBoard) Start() {
 		{ID: "documentation", Name: "Documentation", Color: "#95a5a6"},
 		{ID: "urgent", Name: "Urgent", Color: "#e67e22"},
 	}
+}
 
-	k.ActiveUsers = make(map[string]*UserActivity)
+// saveToSharedState saves current board state to the collaboration room
+func (k *KanbanBoard) saveToSharedState() {
+	if k.Room != nil {
+		boardState := map[string]interface{}{
+			"title":       k.Title,
+			"description": k.Description,
+			"columns":     k.Columns,
+			"cards":       k.Cards,
+			"labels":      k.Labels,
+		}
+		k.SyncState("board_update", boardState)
+	}
+}
 
-	// Initialize collaboration
-	k.CollaborativeComponent = &liveview.CollaborativeComponent{}
-	roomID := fmt.Sprintf("kanban_%s", k.GetIDComponet())
-	k.StartCollaboration(roomID, k.GetIDComponet(), "User")
-
-	k.Commit()
+// loadFromSharedState loads board state from shared room state
+func (k *KanbanBoard) loadFromSharedState(boardData map[string]interface{}) {
+	if title, ok := boardData["title"].(string); ok {
+		k.Title = title
+	}
+	if desc, ok := boardData["description"].(string); ok {
+		k.Description = desc
+	}
+	
+	// Load columns
+	if columnsData, ok := boardData["columns"]; ok {
+		if columnsJSON, err := json.Marshal(columnsData); err == nil {
+			var columns []KanbanColumn
+			if err := json.Unmarshal(columnsJSON, &columns); err == nil {
+				k.Columns = columns
+			}
+		}
+	}
+	
+	// Load cards
+	if cardsData, ok := boardData["cards"]; ok {
+		if cardsJSON, err := json.Marshal(cardsData); err == nil {
+			var cards []KanbanCard
+			if err := json.Unmarshal(cardsJSON, &cards); err == nil {
+				k.Cards = cards
+			}
+		}
+	}
+	
+	// Load labels
+	if labelsData, ok := boardData["labels"]; ok {
+		if labelsJSON, err := json.Marshal(labelsData); err == nil {
+			var labels []KanbanLabel
+			if err := json.Unmarshal(labelsJSON, &labels); err == nil {
+				k.Labels = labels
+			}
+		}
+	}
 }
 
 // GetTemplate returns the Kanban board HTML
@@ -686,22 +765,28 @@ func (k *KanbanBoard) SelectCard(data interface{}) {
 
 // MoveCard moves a card to a different column
 func (k *KanbanBoard) MoveCard(data interface{}) {
+	fmt.Printf("[DEBUG] MoveCard called with data: %+v\n", data)
+	
 	// Handle both JSON string and map
 	var moveData map[string]interface{}
 	
 	if jsonStr, ok := data.(string); ok {
 		// Parse JSON string
 		if err := json.Unmarshal([]byte(jsonStr), &moveData); err != nil {
+			fmt.Printf("[ERROR] Failed to parse JSON: %v\n", err)
 			return
 		}
 	} else if md, ok := data.(map[string]interface{}); ok {
 		moveData = md
 	} else {
+		fmt.Printf("[ERROR] Invalid data type: %T\n", data)
 		return
 	}
 	
 	cardID, _ := moveData["cardId"].(string)
 	newColumnID, _ := moveData["columnId"].(string)
+	
+	fmt.Printf("[DEBUG] Moving card %s to column %s\n", cardID, newColumnID)
 	
 	if cardID != "" && newColumnID != "" {
 		// Find and update card
@@ -722,15 +807,20 @@ func (k *KanbanBoard) MoveCard(data interface{}) {
 				})
 
 				// Broadcast to other users
-				k.BroadcastAction("card_moved", map[string]interface{}{
+				broadcastData := map[string]interface{}{
 					"card_id":     cardID,
 					"from_column": oldColumnID,
 					"to_column":   newColumnID,
 					"user_id":     k.UserID,
-				})
+				}
+				fmt.Printf("[DEBUG] Broadcasting card_moved: %+v\n", broadcastData)
+				k.BroadcastAction("card_moved", broadcastData)
 
 				// Update activity
 				k.updateUserActivity("moved card", cardID)
+
+				// Save updated state to room
+				k.saveToSharedState()
 
 				k.Commit()
 				break
@@ -854,6 +944,71 @@ func (k *KanbanBoard) getUserColor() string {
 		hash = (hash + int(ch)) % len(colors)
 	}
 	return colors[hash]
+}
+
+// HandleCollaborationMessage handles incoming collaboration messages
+func (k *KanbanBoard) HandleCollaborationMessage(data interface{}) {
+	fmt.Printf("[DEBUG] HandleCollaborationMessage called with: %+v\n", data)
+	if msgJSON, ok := data.(string); ok {
+		var msg map[string]interface{}
+		if err := json.Unmarshal([]byte(msgJSON), &msg); err == nil {
+			fmt.Printf("[DEBUG] Processing collaboration message: %+v\n", msg)
+			k.processCollaborativeMessage(msg)
+		} else {
+			fmt.Printf("[ERROR] Failed to unmarshal collaboration message: %v\n", err)
+		}
+	} else {
+		fmt.Printf("[ERROR] Invalid collaboration message type: %T\n", data)
+	}
+}
+
+// processCollaborativeMessage processes different types of collaborative messages
+func (k *KanbanBoard) processCollaborativeMessage(msg map[string]interface{}) {
+	msgType, _ := msg["type"].(string)
+	from, _ := msg["from"].(string)
+	
+	// Don't process our own messages
+	if from == k.UserID {
+		return
+	}
+	
+	switch msgType {
+	case "card_moved":
+		if moveData, ok := msg["data"].(map[string]interface{}); ok {
+			cardID, _ := moveData["card_id"].(string)
+			toColumn, _ := moveData["to_column"].(string)
+			
+			// Update card position
+			for i := range k.Cards {
+				if k.Cards[i].ID == cardID {
+					k.Cards[i].ColumnID = toColumn
+					k.Cards[i].UpdatedAt = time.Now()
+					k.Commit() // Refresh UI
+					break
+				}
+			}
+		}
+	case "card_added":
+		if cardData, ok := msg["data"].(map[string]interface{}); ok {
+			var card KanbanCard
+			if cardJSON, err := json.Marshal(cardData); err == nil {
+				if err := json.Unmarshal(cardJSON, &card); err == nil {
+					k.updateOrAddCard(card)
+					k.Commit()
+				}
+			}
+		}
+	case "user_activity":
+		if activityData, ok := msg["data"].(map[string]interface{}); ok {
+			var activity UserActivity
+			if activityJSON, err := json.Marshal(activityData); err == nil {
+				if err := json.Unmarshal(activityJSON, &activity); err == nil {
+					k.ActiveUsers[activity.UserID] = &activity
+					k.Commit()
+				}
+			}
+		}
+	}
 }
 
 // HandleRemoteUpdate handles updates from other users
