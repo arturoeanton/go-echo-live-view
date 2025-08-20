@@ -34,7 +34,7 @@ var (
 			{{.Css}}
 		</style>
 		<meta charset="utf-8"/>
-        <script src="assets/wasm_exec.js"></script>
+        <script src="/assets/wasm_exec.js"></script>
 	</head>
     <body>
 		<div id="content"> 
@@ -49,7 +49,7 @@ var (
 		};
 		
 		const go = new Go();
-		WebAssembly.instantiateStreaming(fetch("assets/json.wasm?v=" + Date.now()), go.importObject).then((result) => {
+		WebAssembly.instantiateStreaming(fetch("/assets/json.wasm?v=" + Date.now()), go.importObject).then((result) => {
 			go.run(result.instance);
 			console.log('[WASM] Loaded successfully');
 			
