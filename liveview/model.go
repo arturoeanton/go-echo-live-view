@@ -170,6 +170,12 @@ type ComponentDriver[T Component] struct {
 	
 	// Data stores arbitrary component data that persists across renders
 	Data interface{}
+	
+	// errorBoundary provides error recovery for this component
+	errorBoundary *ErrorBoundary
+	
+	// lifecycleCommit is an optional commit function with lifecycle support
+	lifecycleCommit func()
 }
 
 // SetEvent registers a custom event handler for the component.
@@ -437,9 +443,10 @@ func (cw *ComponentDriver[T]) SetValue(value interface{}) {
 }
 
 // EvalScript execute eval($code);
+// DEPRECATED: This method is deprecated and will be removed in the next major version.
+// Use ExecuteSafeScript or ExecutePredefinedAction instead for secure script execution.
 func (cw *ComponentDriver[T]) EvalScript(code string) {
-	Debug("Sending script to client: %d bytes", len(code))
-	cw.channel <- map[string]interface{}{"type": "script", "value": code}
+	cw.DeprecatedEvalScript(code)
 }
 
 // SetStyle execute  document.getElementById("$id").style.cssText = $style

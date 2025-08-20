@@ -24,7 +24,7 @@ type TestDriver struct {
 	Driver     LiveDriver
 	Messages   []map[string]interface{}
 	DOMUpdates map[string]string
-	EventQueue []Event
+	EventQueue []TestEvent
 	Context    context.Context
 	CancelFunc context.CancelFunc
 	wsConn     *websocket.Conn
@@ -32,8 +32,8 @@ type TestDriver struct {
 	echoServer *echo.Echo
 }
 
-// Event represents a test event to be sent to a component
-type Event struct {
+// TestEvent represents a test event to be sent to a component
+type TestEvent struct {
 	ComponentID string
 	EventName   string
 	Data        interface{}
@@ -55,7 +55,7 @@ func NewTestDriver(t *testing.T, component Component, componentID string) *TestD
 		Driver:     driver,
 		Messages:   make([]map[string]interface{}, 0),
 		DOMUpdates: make(map[string]string),
-		EventQueue: make([]Event, 0),
+		EventQueue: make([]TestEvent, 0),
 		Context:    ctx,
 		CancelFunc: cancel,
 	}
@@ -74,7 +74,7 @@ func (td *TestDriver) SimulateEvent(eventName string, data interface{}) error {
 
 // SimulateEventWithID simulates an event for a specific component ID
 func (td *TestDriver) SimulateEventWithID(componentID, eventName string, data interface{}) error {
-	event := Event{
+	event := TestEvent{
 		ComponentID: componentID,
 		EventName:   eventName,
 		Data:        data,
