@@ -191,8 +191,8 @@ func NewEnhancedFlowTool() *EnhancedFlowTool {
 	// Load saved state if available
 	tool.loadSavedState()
 	
-	// Start auto-save timer
-	tool.startAutoSave()
+	// Disable auto-save for debugging
+	// tool.startAutoSave()
 	
 	return tool
 }
@@ -457,6 +457,9 @@ func (f *EnhancedFlowTool) Start() {
 		f.ComponentDriver.Events["ExportDiagram"] = func(c *EnhancedFlowTool, data interface{}) {
 			c.ExportDiagram(data)
 		}
+		f.ComponentDriver.Events["ImportDiagram"] = func(c *EnhancedFlowTool, data interface{}) {
+			c.ImportDiagram(data)
+		}
 		f.ComponentDriver.Events["AnimateFlow"] = func(c *EnhancedFlowTool, data interface{}) {
 			c.AnimateFlow(data)
 		}
@@ -472,7 +475,17 @@ func (f *EnhancedFlowTool) Start() {
 		
 		// Box interaction events
 		f.ComponentDriver.Events["BoxClick"] = func(c *EnhancedFlowTool, data interface{}) {
+			log.Printf("📨 BoxClick event received: %v", data)
 			c.HandleBoxClick(data)
+		}
+		f.ComponentDriver.Events["DeleteBox"] = func(c *EnhancedFlowTool, data interface{}) {
+			c.DeleteBox(data)
+		}
+		f.ComponentDriver.Events["DeleteEdge"] = func(c *EnhancedFlowTool, data interface{}) {
+			c.DeleteEdge(data)
+		}
+		f.ComponentDriver.Events["SelectEdge"] = func(c *EnhancedFlowTool, data interface{}) {
+			c.SelectEdge(data)
 		}
 		f.ComponentDriver.Events["MoveBox"] = func(c *EnhancedFlowTool, data interface{}) {
 			c.HandleMoveBox(data)
@@ -492,18 +505,32 @@ func (f *EnhancedFlowTool) Start() {
 			c.HandleToggleGrid(data)
 		}
 		f.ComponentDriver.Events["ToggleConnectMode"] = func(c *EnhancedFlowTool, data interface{}) {
+			log.Printf("📨 ToggleConnectMode event received: %v", data)
 			c.HandleToggleConnectMode(data)
 		}
 		
-		// Drag events
+		// Generic drag events from WASM
+		f.ComponentDriver.Events["DragStart"] = func(c *EnhancedFlowTool, data interface{}) {
+			log.Printf("📨 DragStart event received: %v", data)
+			c.HandleDragStart(data)
+		}
+		f.ComponentDriver.Events["DragMove"] = func(c *EnhancedFlowTool, data interface{}) {
+			c.HandleDragMove(data)
+		}
+		f.ComponentDriver.Events["DragEnd"] = func(c *EnhancedFlowTool, data interface{}) {
+			c.HandleDragEnd(data)
+		}
+		
+		// Backward compatibility: specific box drag events
 		f.ComponentDriver.Events["BoxStartDrag"] = func(c *EnhancedFlowTool, data interface{}) {
-			c.BoxStartDrag(data)
+			log.Printf("📨 BoxStartDrag event received: %v", data)
+			c.HandleBoxStartDrag(data)
 		}
 		f.ComponentDriver.Events["BoxDrag"] = func(c *EnhancedFlowTool, data interface{}) {
-			c.BoxDrag(data)
+			c.HandleBoxDrag(data)
 		}
 		f.ComponentDriver.Events["BoxEndDrag"] = func(c *EnhancedFlowTool, data interface{}) {
-			c.BoxEndDrag(data)
+			c.HandleBoxEndDrag(data)
 		}
 	}
 	
@@ -776,6 +803,15 @@ func (f *EnhancedFlowTool) GetTemplate() string {
 		.save-indicator.show {
 			opacity: 1;
 		}
+		
+		.draggable-box:hover .delete-box-btn {
+			display: block !important;
+		}
+		
+		.delete-box-btn:hover {
+			background: #dc2626 !important;
+			transform: scale(1.1);
+		}
 	</style>
 </head>
 <body>
@@ -845,11 +881,16 @@ func (f *EnhancedFlowTool) GetTemplate() string {
 				
 				<div class="control-group">
 					<button class="btn btn-secondary" onclick="send_event('{{.IdComponent}}', 'ExportDiagram', null)">
-						Export JSON
+						📥 Export JSON
 					</button>
 					
+					<label class="btn btn-secondary" style="margin: 0;">
+						📤 Import JSON
+						<input type="file" accept=".json" style="display: none;" onchange="handleFileImport(event)">
+					</label>
+					
 					<button class="btn btn-danger" onclick="send_event('{{.IdComponent}}', 'ClearDiagram', null)">
-						Clear All
+						🗑️ Clear All
 					</button>
 				</div>
 			</div>
@@ -890,14 +931,23 @@ func (f *EnhancedFlowTool) GetTemplate() string {
 						
 						<div id="canvas-viewport" style="position: relative; width: 100%; height: 100%; transform: scale({{.Canvas.Zoom}}) translate({{.Canvas.PanX}}px, {{.Canvas.PanY}}px); transform-origin: 0 0; transition: transform 0.2s;">
 							<!-- Render boxes -->
+							{{$component := .}}
 							{{range $id, $box := .Canvas.Boxes}}
 								<div id="box-{{$id}}" 
-								     class="draggable-box"
+								     class="draggable draggable-box flow-box"
+								     data-element-id="box-{{$id}}"
+								     data-component-id="{{$component.IdComponent}}"
 								     data-box-id="{{$id}}"
 								     data-box-x="{{$box.X}}"
 								     data-box-y="{{$box.Y}}"
-								     style="position: absolute; left: {{$box.X}}px; top: {{$box.Y}}px; width: {{$box.Width}}px; height: {{$box.Height}}px; background: {{$box.Color}}; border: 2px solid {{if $box.Selected}}#2563eb{{else}}#cbd5e1{{end}}; border-radius: 8px; padding: 0.5rem; cursor: {{if $.ConnectingMode}}pointer{{else}}move{{end}}; box-shadow: 0 2px 4px rgba(0,0,0,0.1); user-select: none;"
-								     onclick="if({{$.ConnectingMode}}) { send_event('{{$.IdComponent}}', 'BoxClick', '{{$id}}'); }">
+								     {{if $component.ConnectingMode}}data-drag-disabled="true"{{end}}
+								     style="position: absolute; left: {{$box.X}}px; top: {{$box.Y}}px; width: {{$box.Width}}px; height: {{$box.Height}}px; background: {{$box.Color}}; border: 2px solid {{if $box.Selected}}#2563eb{{else}}#cbd5e1{{end}}; border-radius: 8px; padding: 0.5rem; cursor: {{if $component.ConnectingMode}}pointer{{else}}move{{end}}; box-shadow: 0 2px 4px rgba(0,0,0,0.1); user-select: none; z-index: 20;"
+								     onclick="if({{$component.ConnectingMode}}) { send_event('{{$component.IdComponent}}', 'BoxClick', '{{$id}}'); }">
+									<button class="delete-box-btn" 
+									        onclick="event.stopPropagation(); if(confirm('Delete this box?')) { send_event('{{$component.IdComponent}}', 'DeleteBox', '{{$id}}'); }"
+									        style="position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; border-radius: 50%; background: #ef4444; color: white; border: 2px solid white; cursor: pointer; font-size: 12px; line-height: 1; padding: 0; display: {{if $box.Selected}}block{{else}}none{{end}}; z-index: 10;">
+									        ×
+									</button>
 									<div style="font-weight: 600; color: #1f2937; font-size: 0.875rem; pointer-events: none;">{{$box.Label}}</div>
 									{{if $box.Description}}
 										<div style="font-size: 0.75rem; color: #6b7280; pointer-events: none;">{{$box.Description}}</div>
@@ -906,12 +956,31 @@ func (f *EnhancedFlowTool) GetTemplate() string {
 							{{end}}
 							
 							<!-- Render edges as SVG -->
-							<svg style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;">
-								{{range .Canvas.Edges}}
-									<line x1="{{.FromX}}" y1="{{.FromY}}" x2="{{.ToX}}" y2="{{.ToY}}" stroke="{{if .Selected}}#2563eb{{else}}#6b7280{{end}}" stroke-width="2" />
-									{{if .Label}}
-										<text x="{{.GetMidX}}" y="{{.GetMidY}}" text-anchor="middle" fill="#374151" font-size="12">{{.Label}}</text>
-									{{end}}
+							<svg style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto;">
+								{{range $id, $edge := .Canvas.Edges}}
+									<g class="edge-group">
+										<line x1="{{$edge.FromX}}" y1="{{$edge.FromY}}" x2="{{$edge.ToX}}" y2="{{$edge.ToY}}" 
+										      stroke="{{if $edge.Selected}}#2563eb{{else}}#6b7280{{end}}" 
+										      stroke-width="{{if $edge.Selected}}3{{else}}2{{end}}"
+										      style="cursor: pointer;"
+										      onclick="send_event('{{$.IdComponent}}', 'SelectEdge', '{{$id}}')" />
+										{{if $edge.Label}}
+											<text x="{{$edge.GetMidX}}" y="{{$edge.GetMidY}}" text-anchor="middle" fill="#374151" font-size="12">{{$edge.Label}}</text>
+										{{end}}
+										{{if $edge.Selected}}
+											<circle cx="{{$edge.GetMidX}}" cy="{{$edge.GetMidY}}" r="10" 
+											        fill="#ef4444" 
+											        style="cursor: pointer;"
+											        onclick="event.stopPropagation(); if(confirm('Delete this connection?')) { send_event('{{$.IdComponent}}', 'DeleteEdge', '{{$id}}'); }">
+											</circle>
+											<text x="{{$edge.GetMidX}}" y="{{$edge.GetMidY}}" 
+											      text-anchor="middle" 
+											      fill="white" 
+											      font-size="14" 
+											      font-weight="bold"
+											      pointer-events="none">×</text>
+										{{end}}
+									</g>
 								{{end}}
 							</svg>
 						</div>
@@ -972,6 +1041,42 @@ func (f *EnhancedFlowTool) GetTemplate() string {
 	<script>
 	// Drag & drop is now handled in WASM module
 	// This prevents event listeners from being lost on re-render
+	
+	// Handle JSON file import
+	function handleFileImport(event) {
+		var file = event.target.files[0];
+		if (file) {
+			var reader = new FileReader();
+			reader.onload = function(e) {
+				var jsonContent = e.target.result;
+				send_event('{{.IdComponent}}', 'ImportDiagram', jsonContent);
+			};
+			reader.readAsText(file);
+		}
+	}
+	
+	// Handle keyboard shortcuts
+	document.addEventListener('keydown', function(e) {
+		// Delete key to delete selected box
+		if (e.key === 'Delete' || e.key === 'Backspace') {
+			e.preventDefault();
+			// Find selected box
+			{{range $id, $box := .Canvas.Boxes}}
+				{{if $box.Selected}}
+					if (confirm('Delete selected box?')) {
+						send_event('{{.IdComponent}}', 'DeleteBox', '{{$id}}');
+					}
+				{{end}}
+			{{end}}
+		}
+		
+		// Escape key to exit connect mode
+		if (e.key === 'Escape') {
+			{{if .ConnectingMode}}
+				send_event('{{.IdComponent}}', 'ToggleConnectMode', null);
+			{{end}}
+		}
+	});
 	
 	// Show save indicator
 	function showSaveIndicator() {
@@ -1097,36 +1202,98 @@ func (f *EnhancedFlowTool) ExportDiagram(data interface{}) {
 	} else {
 		f.JsonExport = string(jsonBytes)
 		
-		// Create formatted content for modal
-		modalContent := fmt.Sprintf(`
-			<div style="font-family: monospace; background: #f5f5f5; padding: 1rem; border-radius: 4px; overflow-x: auto; max-height: 400px; overflow-y: auto;">
-				<pre style="margin: 0; white-space: pre-wrap; word-wrap: break-word;">%s</pre>
-			</div>
-			<div style="margin-top: 1rem; display: flex; gap: 1rem;">
-				<button onclick="navigator.clipboard.writeText('%s'); alert('Copied to clipboard!');" 
-				        style="padding: 0.5rem 1rem; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
-					Copy to Clipboard
-				</button>
-				<span style="color: #666; padding: 0.5rem;">%d boxes, %d edges</span>
-			</div>
-		`, string(jsonBytes), strings.ReplaceAll(string(jsonBytes), "'", "\\'"), len(f.Canvas.Boxes), len(f.Canvas.Edges))
+		// Create JavaScript to handle the download
+		downloadScript := fmt.Sprintf(`
+			var jsonData = %s;
+			var dataStr = JSON.stringify(jsonData, null, 2);
+			var dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+			var exportFileDefaultName = 'flow_diagram_%d.json';
+			var linkElement = document.createElement('a');
+			linkElement.setAttribute('href', dataUri);
+			linkElement.setAttribute('download', exportFileDefaultName);
+			linkElement.click();
+		`, string(jsonBytes), time.Now().Unix())
 		
-		// Show modal with JSON
-		if f.Modal != nil {
-			f.Modal.Title = "Export JSON"
-			f.Modal.Content = modalContent
-			f.Modal.IsOpen = true
-			if f.Modal.ComponentDriver != nil {
-				f.Modal.Commit()
-			}
+		// Execute the download script
+		if f.ComponentDriver != nil {
+			f.ComponentDriver.EvalScript(downloadScript)
 		}
 		
-		f.LastAction = "Exported to modal"
+		f.LastAction = fmt.Sprintf("Exported diagram with %d boxes and %d edges", len(f.Canvas.Boxes), len(f.Canvas.Edges))
 	}
 	
 	if f.ComponentDriver != nil {
 		f.Commit()
 	}
+}
+
+func (f *EnhancedFlowTool) ImportDiagram(data interface{}) {
+	// Parse JSON data
+	var jsonStr string
+	if str, ok := data.(string); ok {
+		jsonStr = str
+	} else {
+		f.LastAction = "Invalid import data"
+		f.Commit()
+		return
+	}
+	
+	var importData map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonStr), &importData); err != nil {
+		f.LastAction = fmt.Sprintf("Import error: %v", err)
+		f.Commit()
+		return
+	}
+	
+	// Clear current diagram
+	f.Canvas.Clear()
+	f.NodeCount = 0
+	f.EdgeCount = 0
+	
+	// Import boxes
+	if boxes, ok := importData["boxes"].([]interface{}); ok {
+		for _, boxData := range boxes {
+			if box, ok := boxData.(map[string]interface{}); ok {
+				id := box["id"].(string)
+				label := box["label"].(string)
+				boxType := components.BoxType(box["type"].(string))
+				x := int(box["x"].(float64))
+				y := int(box["y"].(float64))
+				
+				newBox := components.NewFlowBox(id, label, boxType, x, y)
+				f.Canvas.AddBox(newBox)
+				f.NodeCount++
+			}
+		}
+	}
+	
+	// Import edges
+	if edges, ok := importData["edges"].([]interface{}); ok {
+		for _, edgeData := range edges {
+			if edge, ok := edgeData.(map[string]interface{}); ok {
+				id := edge["id"].(string)
+				fromBox := edge["fromBox"].(string)
+				fromPort := edge["fromPort"].(string)
+				toBox := edge["toBox"].(string)
+				toPort := edge["toPort"].(string)
+				
+				newEdge := components.NewFlowEdge(id, fromBox, fromPort, toBox, toPort)
+				if edgeType, ok := edge["type"].(string); ok {
+					newEdge.Type = components.EdgeType(edgeType)
+				}
+				
+				f.Canvas.AddEdge(newEdge)
+				f.EdgeCount++
+			}
+		}
+	}
+	
+	// Update edge positions
+	f.updateEdgePositions()
+	
+	f.LastAction = fmt.Sprintf("Imported %d boxes and %d edges", f.NodeCount, f.EdgeCount)
+	f.saveToUndoStack()
+	f.Commit()
 }
 
 func (f *EnhancedFlowTool) AnimateFlow(data interface{}) {
@@ -1192,6 +1359,113 @@ func (f *EnhancedFlowTool) HandleBoxClick(data interface{}) {
 	}
 }
 
+func (f *EnhancedFlowTool) DeleteBox(data interface{}) {
+	var boxID string
+	
+	// Handle different data types
+	if str, ok := data.(string); ok {
+		boxID = str
+	} else if dataMap, ok := data.(map[string]interface{}); ok {
+		if id, ok := dataMap["id"].(string); ok {
+			boxID = id
+		}
+	}
+	
+	if boxID == "" {
+		f.LastAction = "No box selected to delete"
+		f.Commit()
+		return
+	}
+	
+	// Save state for undo
+	f.saveToUndoStack()
+	
+	// Remove all edges connected to this box
+	for edgeID, edge := range f.Canvas.Edges {
+		if edge.FromBox == boxID || edge.ToBox == boxID {
+			delete(f.Canvas.Edges, edgeID)
+			f.EdgeCount--
+		}
+	}
+	
+	// Remove the box
+	if _, exists := f.Canvas.Boxes[boxID]; exists {
+		delete(f.Canvas.Boxes, boxID)
+		f.NodeCount--
+		f.LastAction = fmt.Sprintf("Deleted box: %s", boxID)
+	} else {
+		f.LastAction = fmt.Sprintf("Box not found: %s", boxID)
+	}
+	
+	if f.ComponentDriver != nil {
+		f.Commit()
+	}
+}
+
+func (f *EnhancedFlowTool) DeleteEdge(data interface{}) {
+	var edgeID string
+	
+	// Handle different data types
+	if str, ok := data.(string); ok {
+		edgeID = str
+	} else if dataMap, ok := data.(map[string]interface{}); ok {
+		if id, ok := dataMap["id"].(string); ok {
+			edgeID = id
+		}
+	}
+	
+	if edgeID == "" {
+		f.LastAction = "No edge selected to delete"
+		f.Commit()
+		return
+	}
+	
+	// Save state for undo
+	f.saveToUndoStack()
+	
+	// Remove the edge
+	if _, exists := f.Canvas.Edges[edgeID]; exists {
+		delete(f.Canvas.Edges, edgeID)
+		f.EdgeCount--
+		f.LastAction = fmt.Sprintf("Deleted edge: %s", edgeID)
+	} else {
+		f.LastAction = fmt.Sprintf("Edge not found: %s", edgeID)
+	}
+	
+	if f.ComponentDriver != nil {
+		f.Commit()
+	}
+}
+
+func (f *EnhancedFlowTool) SelectEdge(data interface{}) {
+	edgeID, ok := data.(string)
+	if !ok {
+		f.LastAction = "Invalid edge ID for selection"
+		f.Commit()
+		return
+	}
+	
+	edge, exists := f.Canvas.Edges[edgeID]
+	if !exists {
+		f.LastAction = fmt.Sprintf("Edge not found: %s", edgeID)
+		f.Commit()
+		return
+	}
+	
+	// Deselect other edges
+	for _, e := range f.Canvas.Edges {
+		e.Selected = false
+	}
+	
+	// Select this edge
+	edge.Selected = !edge.Selected
+	f.LastAction = fmt.Sprintf("Selected edge: %s", edgeID)
+	
+	if f.ComponentDriver != nil {
+		f.Commit()
+	}
+}
+
 func (f *EnhancedFlowTool) HandleMoveBox(data interface{}) {
 	moveData, ok := data.(map[string]interface{})
 	if !ok {
@@ -1241,8 +1515,10 @@ func (f *EnhancedFlowTool) HandleMoveBox(data interface{}) {
 }
 
 func (f *EnhancedFlowTool) HandleToggleConnectMode(data interface{}) {
+	log.Printf("🔗 HandleToggleConnectMode called with data: %v", data)
 	f.ConnectingMode = !f.ConnectingMode
 	f.ConnectingFrom = ""
+	log.Printf("🔗 ConnectingMode toggled to: %v", f.ConnectingMode)
 	
 	// Clear all selections
 	for _, box := range f.Canvas.Boxes {
@@ -1256,13 +1532,82 @@ func (f *EnhancedFlowTool) HandleToggleConnectMode(data interface{}) {
 	}
 	
 	if f.ComponentDriver != nil {
+		log.Printf("🔄 Calling Commit() to update UI...")
 		f.Commit()
+		log.Printf("✅ Commit() completed")
 	}
 }
 
-func (f *EnhancedFlowTool) BoxStartDrag(data interface{}) {
-	// Handle drag start
-	log.Printf("BoxStartDrag called with data: %v (%T)", data, data)
+// Backward compatibility methods for old BoxDrag events
+func (f *EnhancedFlowTool) HandleBoxStartDrag(data interface{}) {
+	log.Printf("🚀 HandleBoxStartDrag called with data: %v (%T)", data, data)
+	
+	// Convert old format to new format and delegate to HandleDragStart
+	if dataStr, ok := data.(string); ok {
+		var oldData map[string]interface{}
+		if err := json.Unmarshal([]byte(dataStr), &oldData); err == nil {
+			// Convert old format {id, x, y} to new format {element, x, y}
+			if id, hasId := oldData["id"].(string); hasId {
+				newData := map[string]interface{}{
+					"element": "box-" + id,
+					"x":       oldData["x"],
+					"y":       oldData["y"],
+				}
+				newDataJSON, _ := json.Marshal(newData)
+				f.HandleDragStart(string(newDataJSON))
+				return
+			}
+		}
+	}
+	
+	// Fallback to direct call
+	f.HandleDragStart(data)
+}
+
+func (f *EnhancedFlowTool) HandleBoxDrag(data interface{}) {
+	// Convert old format to new format and delegate to HandleDragMove
+	if dataStr, ok := data.(string); ok {
+		var oldData map[string]interface{}
+		if err := json.Unmarshal([]byte(dataStr), &oldData); err == nil {
+			// Convert old format {id, x, y} to new format {element, x, y}
+			if id, hasId := oldData["id"].(string); hasId {
+				newData := map[string]interface{}{
+					"element": "box-" + id,
+					"x":       oldData["x"],
+					"y":       oldData["y"],
+				}
+				newDataJSON, _ := json.Marshal(newData)
+				f.HandleDragMove(string(newDataJSON))
+				return
+			}
+		}
+	}
+	
+	// Fallback to direct call
+	f.HandleDragMove(data)
+}
+
+func (f *EnhancedFlowTool) HandleBoxEndDrag(data interface{}) {
+	// Convert old format and delegate to HandleDragEnd
+	if dataStr, ok := data.(string); ok {
+		// For BoxEndDrag, the data might just be the box ID
+		newData := map[string]interface{}{
+			"element": "box-" + dataStr,
+			"x":       0, // Will be updated by the actual handler
+			"y":       0,
+		}
+		newDataJSON, _ := json.Marshal(newData)
+		f.HandleDragEnd(string(newDataJSON))
+		return
+	}
+	
+	// Fallback to direct call
+	f.HandleDragEnd(data)
+}
+
+func (f *EnhancedFlowTool) HandleDragStart(data interface{}) {
+	// Handle generic drag start
+	log.Printf("🚀 DragStart called with data: %v (%T)", data, data)
 	
 	// Try to parse as JSON string first
 	if dataStr, ok := data.(string); ok {
@@ -1274,21 +1619,21 @@ func (f *EnhancedFlowTool) BoxStartDrag(data interface{}) {
 	}
 	
 	if dataMap, ok := data.(map[string]interface{}); ok {
-		if boxID, ok := dataMap["id"].(string); ok {
-			f.DraggingBox = boxID
-			log.Printf("Started dragging box: %s", boxID)
-			if box, exists := f.Canvas.Boxes[boxID]; exists {
-				box.Dragging = true
-				if box.ComponentDriver != nil {
-					box.Commit()
+		if element, ok := dataMap["element"].(string); ok {
+			// Extract box ID from element ID (format: "box-{id}")
+			if strings.HasPrefix(element, "box-") {
+				boxID := strings.TrimPrefix(element, "box-")
+				f.DraggingBox = boxID
+				log.Printf("Started dragging box: %s", boxID)
+				if box, exists := f.Canvas.Boxes[boxID]; exists {
+					box.Dragging = true
+					if box.ComponentDriver != nil {
+						box.Commit()
+					}
 				}
+				f.LastAction = fmt.Sprintf("Started dragging %s", boxID)
 			}
-			f.LastAction = fmt.Sprintf("Started dragging %s", boxID)
-		} else {
-			log.Printf("BoxStartDrag: id not found in dataMap: %v", dataMap)
 		}
-	} else {
-		log.Printf("BoxStartDrag: data is not a map: %T", data)
 	}
 	
 	if f.ComponentDriver != nil {
@@ -1296,7 +1641,7 @@ func (f *EnhancedFlowTool) BoxStartDrag(data interface{}) {
 	}
 }
 
-func (f *EnhancedFlowTool) BoxDrag(data interface{}) {
+func (f *EnhancedFlowTool) HandleDragMove(data interface{}) {
 	if f.DraggingBox == "" {
 		log.Printf("BoxDrag: No box being dragged")
 		return
@@ -1370,7 +1715,7 @@ func (f *EnhancedFlowTool) BoxDrag(data interface{}) {
 	}
 }
 
-func (f *EnhancedFlowTool) BoxEndDrag(data interface{}) {
+func (f *EnhancedFlowTool) HandleDragEnd(data interface{}) {
 	if f.DraggingBox != "" {
 		if box, exists := f.Canvas.Boxes[f.DraggingBox]; exists {
 			box.Dragging = false
@@ -1467,7 +1812,7 @@ func main() {
 	}
 
 	home.Register(func() liveview.LiveDriver {
-		// Create layout wrapper
+		// Use simple layout that doesn't cause remounting
 		document := liveview.NewLayout("flowtool-layout", `{{mount "flow-tool"}}`)
 		
 		// Create enhanced flow tool component
