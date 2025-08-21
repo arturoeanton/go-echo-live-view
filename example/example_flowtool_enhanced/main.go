@@ -335,122 +335,283 @@ func (f *EnhancedFlowTool) createConnection(from, to string) {
 }
 
 func (f *EnhancedFlowTool) saveToUndoStack() {
-	// Save current state to undo stack
-	stateJSON, _ := json.Marshal(map[string]interface{}{
-		"boxes": f.Canvas.Boxes,
-		"edges": f.Canvas.Edges,
-	})
+	// Save current state and clear redo stack (for normal operations)
+	f.saveCurrentStateToUndoStack()
+	// Clear redo stack on new action
+	f.RedoStack = []string{}
+}
+
+func (f *EnhancedFlowTool) saveCurrentStateToUndoStack() {
+	// Save current state WITHOUT clearing redo stack (for undo/redo operations)
+	// Create a serializable state
+	boxesData := make(map[string]map[string]interface{})
+	for id, box := range f.Canvas.Boxes {
+		boxData := map[string]interface{}{
+			"id":          box.ID,
+			"label":       box.Label,
+			"description": box.Description,
+			"type":        string(box.Type),
+			"x":           box.X,
+			"y":           box.Y,
+			"width":       box.Width,
+			"height":      box.Height,
+			"color":       box.Color,
+			"selected":    box.Selected,
+		}
+		// Include Data field with code
+		if box.Data != nil {
+			boxData["data"] = box.Data
+		}
+		boxesData[id] = boxData
+	}
+	
+	edgesData := make(map[string]map[string]interface{})
+	for id, edge := range f.Canvas.Edges {
+		edgesData[id] = map[string]interface{}{
+			"id":       edge.ID,
+			"fromBox":  edge.FromBox,
+			"fromPort": edge.FromPort,
+			"toBox":    edge.ToBox,
+			"toPort":   edge.ToPort,
+			"label":    edge.Label,
+			"type":     string(edge.Type),
+			"fromX":    edge.FromX,
+			"fromY":    edge.FromY,
+			"toX":      edge.ToX,
+			"toY":      edge.ToY,
+		}
+	}
+	
+	state := map[string]interface{}{
+		"boxes":     boxesData,
+		"edges":     edgesData,
+		"nodeCount": f.NodeCount,
+		"edgeCount": f.EdgeCount,
+	}
+	
+	stateJSON, _ := json.Marshal(state)
 	f.UndoStack = append(f.UndoStack, string(stateJSON))
 	
 	// Limit undo stack size
 	if len(f.UndoStack) > 50 {
 		f.UndoStack = f.UndoStack[1:]
 	}
-	
-	// Clear redo stack on new action
-	f.RedoStack = []string{}
 }
 
 func (f *EnhancedFlowTool) Undo(data interface{}) {
-	if len(f.UndoStack) > 0 {
-		// Save current state to redo stack
-		currentState, _ := json.Marshal(map[string]interface{}{
-			"boxes": f.Canvas.Boxes,
-			"edges": f.Canvas.Edges,
-		})
-		f.RedoStack = append(f.RedoStack, string(currentState))
-		
-		// Restore previous state
-		prevState := f.UndoStack[len(f.UndoStack)-1]
-		f.UndoStack = f.UndoStack[:len(f.UndoStack)-1]
-		
-		var state map[string]interface{}
-		if err := json.Unmarshal([]byte(prevState), &state); err == nil {
-			// Restore boxes
-			if boxes, ok := state["boxes"].(map[string]interface{}); ok {
-				f.Canvas.Boxes = make(map[string]*components.FlowBox)
-				for id, boxData := range boxes {
-					if boxMap, ok := boxData.(map[string]interface{}); ok {
-						box := &components.FlowBox{
-							ID:    id,
-							Label: boxMap["Label"].(string),
-							X:     int(boxMap["X"].(float64)),
-							Y:     int(boxMap["Y"].(float64)),
-						}
-						f.Canvas.Boxes[id] = box
+	if len(f.UndoStack) == 0 {
+		f.LastAction = "Nothing to undo"
+		f.Commit()
+		return
+	}
+	
+	// Save current state to redo stack before undoing
+	f.saveToRedoStack()
+	
+	// Get and remove the last state from undo stack
+	prevState := f.UndoStack[len(f.UndoStack)-1]
+	f.UndoStack = f.UndoStack[:len(f.UndoStack)-1]
+	
+	// Restore the state
+	f.restoreState(prevState)
+	
+	f.LastAction = "Undo performed"
+	f.Commit()
+}
+
+func (f *EnhancedFlowTool) saveToRedoStack() {
+	// Save current state to redo stack (same as saveToUndoStack but for redo)
+	boxesData := make(map[string]map[string]interface{})
+	for id, box := range f.Canvas.Boxes {
+		boxData := map[string]interface{}{
+			"id":          box.ID,
+			"label":       box.Label,
+			"description": box.Description,
+			"type":        string(box.Type),
+			"x":           box.X,
+			"y":           box.Y,
+			"width":       box.Width,
+			"height":      box.Height,
+			"color":       box.Color,
+			"selected":    box.Selected,
+		}
+		if box.Data != nil {
+			boxData["data"] = box.Data
+		}
+		boxesData[id] = boxData
+	}
+	
+	edgesData := make(map[string]map[string]interface{})
+	for id, edge := range f.Canvas.Edges {
+		edgesData[id] = map[string]interface{}{
+			"id":       edge.ID,
+			"fromBox":  edge.FromBox,
+			"fromPort": edge.FromPort,
+			"toBox":    edge.ToBox,
+			"toPort":   edge.ToPort,
+			"label":    edge.Label,
+			"type":     string(edge.Type),
+			"fromX":    edge.FromX,
+			"fromY":    edge.FromY,
+			"toX":      edge.ToX,
+			"toY":      edge.ToY,
+		}
+	}
+	
+	state := map[string]interface{}{
+		"boxes":     boxesData,
+		"edges":     edgesData,
+		"nodeCount": f.NodeCount,
+		"edgeCount": f.EdgeCount,
+	}
+	
+	stateJSON, _ := json.Marshal(state)
+	f.RedoStack = append(f.RedoStack, string(stateJSON))
+}
+
+func (f *EnhancedFlowTool) restoreState(stateJSON string) {
+	var state map[string]interface{}
+	if err := json.Unmarshal([]byte(stateJSON), &state); err != nil {
+		log.Printf("Error unmarshaling state: %v", err)
+		return
+	}
+	
+	// Clear current canvas
+	f.Canvas.Boxes = make(map[string]*components.FlowBox)
+	f.Canvas.Edges = make(map[string]*components.FlowEdge)
+	
+	// Restore boxes
+	if boxesData, ok := state["boxes"].(map[string]interface{}); ok {
+		for id, boxData := range boxesData {
+			if boxMap, ok := boxData.(map[string]interface{}); ok {
+				// Get box type
+				boxType := components.BoxTypeProcess
+				if typeStr, ok := boxMap["type"].(string); ok {
+					boxType = components.BoxType(typeStr)
+				}
+				
+				// Get dimensions with defaults
+				width := 120
+				height := 60
+				if w, ok := boxMap["width"].(float64); ok && w > 0 {
+					width = int(w)
+				}
+				if h, ok := boxMap["height"].(float64); ok && h > 0 {
+					height = int(h)
+				}
+				
+				// Create new box
+				box := &components.FlowBox{
+					ID:     id,
+					Label:  boxMap["label"].(string),
+					Type:   boxType,
+					X:      int(boxMap["x"].(float64)),
+					Y:      int(boxMap["y"].(float64)),
+					Width:  width,
+					Height: height,
+				}
+				
+				// Restore optional fields
+				if desc, ok := boxMap["description"].(string); ok {
+					box.Description = desc
+				}
+				if color, ok := boxMap["color"].(string); ok {
+					box.Color = color
+				} else {
+					// Set default color based on type
+					switch boxType {
+					case components.BoxTypeStart:
+						box.Color = "#dcfce7"
+					case components.BoxTypeEnd:
+						box.Color = "#fee2e2"
+					case components.BoxTypeDecision:
+						box.Color = "#fef3c7"
+					case components.BoxTypeData:
+						box.Color = "#e9d5ff"
+					default:
+						box.Color = "#dbeafe"
 					}
 				}
-			}
-			// Restore edges
-			if edges, ok := state["edges"].(map[string]interface{}); ok {
-				f.Canvas.Edges = make(map[string]*components.FlowEdge)
-				for id, edgeData := range edges {
-					if edgeMap, ok := edgeData.(map[string]interface{}); ok {
-						edge := &components.FlowEdge{
-							ID:       id,
-							FromBox:  edgeMap["FromBox"].(string),
-							ToBox:    edgeMap["ToBox"].(string),
-						}
-						f.Canvas.Edges[id] = edge
-					}
+				
+				// Restore Data field (including code)
+				if data, ok := boxMap["data"].(map[string]interface{}); ok {
+					box.Data = data
 				}
+				
+				// Register driver
+				liveview.New(id, box)
+				f.Canvas.Boxes[id] = box
 			}
 		}
-		
-		f.LastAction = "Undo performed"
-		f.Commit()
+	}
+	
+	// Restore edges
+	if edgesData, ok := state["edges"].(map[string]interface{}); ok {
+		for id, edgeData := range edgesData {
+			if edgeMap, ok := edgeData.(map[string]interface{}); ok {
+				edge := &components.FlowEdge{
+					ID:       id,
+					FromBox:  edgeMap["fromBox"].(string),
+					FromPort: edgeMap["fromPort"].(string),
+					ToBox:    edgeMap["toBox"].(string),
+					ToPort:   edgeMap["toPort"].(string),
+				}
+				
+				// Restore optional fields
+				if label, ok := edgeMap["label"].(string); ok {
+					edge.Label = label
+				}
+				if typeStr, ok := edgeMap["type"].(string); ok {
+					edge.Type = components.EdgeType(typeStr)
+				}
+				
+				// Restore positions
+				if x, ok := edgeMap["fromX"].(float64); ok {
+					edge.FromX = int(x)
+				}
+				if y, ok := edgeMap["fromY"].(float64); ok {
+					edge.FromY = int(y)
+				}
+				if x, ok := edgeMap["toX"].(float64); ok {
+					edge.ToX = int(x)
+				}
+				if y, ok := edgeMap["toY"].(float64); ok {
+					edge.ToY = int(y)
+				}
+				
+				f.Canvas.Edges[id] = edge
+			}
+		}
+	}
+	
+	// Restore counts
+	if nodeCount, ok := state["nodeCount"].(float64); ok {
+		f.NodeCount = int(nodeCount)
+	}
+	if edgeCount, ok := state["edgeCount"].(float64); ok {
+		f.EdgeCount = int(edgeCount)
 	}
 }
 
 func (f *EnhancedFlowTool) Redo(data interface{}) {
-	if len(f.RedoStack) > 0 {
-		// Save current state to undo stack
-		currentState, _ := json.Marshal(map[string]interface{}{
-			"boxes": f.Canvas.Boxes,
-			"edges": f.Canvas.Edges,
-		})
-		f.UndoStack = append(f.UndoStack, string(currentState))
-		
-		// Restore next state
-		nextState := f.RedoStack[len(f.RedoStack)-1]
-		f.RedoStack = f.RedoStack[:len(f.RedoStack)-1]
-		
-		var state map[string]interface{}
-		if err := json.Unmarshal([]byte(nextState), &state); err == nil {
-			// Restore boxes
-			if boxes, ok := state["boxes"].(map[string]interface{}); ok {
-				f.Canvas.Boxes = make(map[string]*components.FlowBox)
-				for id, boxData := range boxes {
-					if boxMap, ok := boxData.(map[string]interface{}); ok {
-						box := &components.FlowBox{
-							ID:    id,
-							Label: boxMap["Label"].(string),
-							X:     int(boxMap["X"].(float64)),
-							Y:     int(boxMap["Y"].(float64)),
-						}
-						f.Canvas.Boxes[id] = box
-					}
-				}
-			}
-			// Restore edges
-			if edges, ok := state["edges"].(map[string]interface{}); ok {
-				f.Canvas.Edges = make(map[string]*components.FlowEdge)
-				for id, edgeData := range edges {
-					if edgeMap, ok := edgeData.(map[string]interface{}); ok {
-						edge := &components.FlowEdge{
-							ID:       id,
-							FromBox:  edgeMap["FromBox"].(string),
-							ToBox:    edgeMap["ToBox"].(string),
-						}
-						f.Canvas.Edges[id] = edge
-					}
-				}
-			}
-		}
-		
-		f.LastAction = "Redo performed"
+	if len(f.RedoStack) == 0 {
+		f.LastAction = "Nothing to redo"
 		f.Commit()
+		return
 	}
+	
+	// Save current state to undo stack WITHOUT clearing redo stack
+	f.saveCurrentStateToUndoStack()
+	
+	// Get and remove the last state from redo stack
+	nextState := f.RedoStack[len(f.RedoStack)-1]
+	f.RedoStack = f.RedoStack[:len(f.RedoStack)-1]
+	
+	// Restore the state
+	f.restoreState(nextState)
+	
+	f.LastAction = "Redo performed"
+	f.Commit()
 }
 
 func (f *EnhancedFlowTool) Start() {
@@ -1216,6 +1377,9 @@ func (f *EnhancedFlowTool) GetDriver() liveview.LiveDriver {
 }
 
 func (f *EnhancedFlowTool) HandleAddNode(data interface{}) {
+	// Save state BEFORE making changes
+	f.saveToUndoStack()
+	
 	// Implementation with VDOM update
 	nodeType := data.(string)
 	
@@ -1254,7 +1418,6 @@ func (f *EnhancedFlowTool) HandleAddNode(data interface{}) {
 	
 	f.NodeCount++
 	f.LastAction = fmt.Sprintf("Added %s node", nodeType)
-	f.saveToUndoStack()
 	
 	if f.ComponentDriver != nil {
 		f.Commit()
@@ -1262,6 +1425,9 @@ func (f *EnhancedFlowTool) HandleAddNode(data interface{}) {
 }
 
 func (f *EnhancedFlowTool) AutoArrange(data interface{}) {
+	// Save state BEFORE making changes
+	f.saveToUndoStack()
+	
 	// Auto-arrange nodes using a simple grid layout
 	boxList := make([]*components.FlowBox, 0, len(f.Canvas.Boxes))
 	for _, box := range f.Canvas.Boxes {
@@ -1284,7 +1450,6 @@ func (f *EnhancedFlowTool) AutoArrange(data interface{}) {
 	f.updateEdgePositions()
 	
 	f.LastAction = "Nodes auto-arranged"
-	f.saveToUndoStack()
 	f.Commit()
 }
 
@@ -1408,6 +1573,9 @@ func (f *EnhancedFlowTool) ImportDiagram(data interface{}) {
 		return
 	}
 	
+	// Save state BEFORE making changes
+	f.saveToUndoStack()
+	
 	// Clear current diagram
 	f.Canvas.Clear()
 	f.NodeCount = 0
@@ -1479,7 +1647,6 @@ func (f *EnhancedFlowTool) ImportDiagram(data interface{}) {
 	f.updateEdgePositions()
 	
 	f.LastAction = fmt.Sprintf("Imported %d boxes and %d edges", f.NodeCount, f.EdgeCount)
-	f.saveToUndoStack()
 	f.Commit()
 }
 
@@ -1504,8 +1671,9 @@ func (f *EnhancedFlowTool) HandleBoxClick(data interface{}) {
 		} else if f.ConnectingFrom != boxID {
 			// Second box selected - create edge
 			if f.validateConnection(f.ConnectingFrom, boxID) {
-				f.createConnection(f.ConnectingFrom, boxID)
+				// Save state BEFORE creating connection
 				f.saveToUndoStack()
+				f.createConnection(f.ConnectingFrom, boxID)
 			}
 			
 			// Reset connection mode
@@ -1777,6 +1945,9 @@ func (f *EnhancedFlowTool) HandleDragStart(data interface{}) {
 	// Handle generic drag start
 	log.Printf("🚀 DragStart called with data: %v (%T)", data, data)
 	
+	// Save state BEFORE starting drag
+	f.saveToUndoStack()
+	
 	// Try to parse as JSON string first
 	if dataStr, ok := data.(string); ok {
 		var dataMap map[string]interface{}
@@ -1889,7 +2060,7 @@ func (f *EnhancedFlowTool) HandleDragEnd(data interface{}) {
 			}
 		}
 		f.LastAction = fmt.Sprintf("Finished dragging %s", f.DraggingBox)
-		f.saveToUndoStack()
+		// Don't save state here - it was already saved in HandleDragStart
 		f.DraggingBox = ""
 	}
 	
@@ -2024,6 +2195,9 @@ func (f *EnhancedFlowTool) HandleSaveEdit(data interface{}) {
 	
 	if f.EditingType == "box" {
 		if box, ok := f.Canvas.Boxes[f.EditingID]; ok {
+			// Save state BEFORE making changes
+			f.saveToUndoStack()
+			
 			box.Label = newValue
 			
 			// Save code to box Data
@@ -2036,14 +2210,13 @@ func (f *EnhancedFlowTool) HandleSaveEdit(data interface{}) {
 			} else {
 				f.LastAction = fmt.Sprintf("Renamed box to: %s", newValue)
 			}
-			
-			f.saveToUndoStack()
 		}
 	} else if f.EditingType == "edge" {
 		if edge, ok := f.Canvas.Edges[f.EditingID]; ok {
+			// Save state BEFORE making changes
+			f.saveToUndoStack()
 			edge.Label = newValue
 			f.LastAction = fmt.Sprintf("Updated edge label to: %s", newValue)
-			f.saveToUndoStack()
 		}
 	}
 	
