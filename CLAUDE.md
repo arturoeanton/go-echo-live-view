@@ -110,3 +110,7 @@ When developing new features, create examples in the `example/` directory follow
 - ⚙️ **Keep @cmd/wasm/main.go generic**:  
   The file `@cmd/wasm/main.go` is part of the framework and **must not include example-specific logic**.  
   It must always remain generic, reusable, and decoupled from particular use cases.
+
+- 🧩 **This is a framework, not an application**:  
+  The project must always be treated as a **framework/library**, never as a finished app, website, or product.  
+  Code generation should focus on reusable, generic, and extensible components — not on example-specific or application-specific logic.
