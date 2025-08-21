@@ -1,11 +1,18 @@
+// Package main provides the WebAssembly module for Go Echo LiveView framework.
+// This module handles client-side WebSocket communication, DOM manipulation,
+// and drag-and-drop functionality for real-time web applications.
+//
+// Build Instructions:
+//   cd cmd/wasm/
+//   GOOS=js GOARCH=wasm go build -o ../../assets/json.wasm
+//   cd -
+//
+// The WASM module is automatically loaded by the framework and provides:
+//   - WebSocket connection management with auto-reconnection
+//   - DOM manipulation and event handling
+//   - Generic drag-and-drop support for any draggable element
+//   - Real-time bidirectional communication between client and server
 package main
-
-/*
-cd cmd/wasm/
-#cp "$(go env GOROOT)/misc/wasm/wasm_exec.js" ../../assets/
-GOOS=js GOARCH=wasm go build -o  ../../assets/json.wasm
-cd -
-*/
 
 import (
 	"encoding/json"
@@ -15,40 +22,55 @@ import (
 	"syscall/js"
 )
 
+// Global JavaScript objects and configuration
 var (
-	document  js.Value = js.Global().Get("document")
-	window    js.Value = js.Global().Get("window")
-	console   js.Value = js.Global().Get("console")
-	webSocket js.Value = js.Global().Get("WebSocket")
-	loc       js.Value = window.Get("location")
-	uri       string   = "ws:"
-	ws        js.Value
-	protocol  string = loc.Get("protocol").String()
-	isVerbose bool
+	// DOM and browser API references
+	document  js.Value = js.Global().Get("document")  // Document object for DOM manipulation
+	window    js.Value = js.Global().Get("window")    // Window object for browser APIs
+	console   js.Value = js.Global().Get("console")   // Console for debugging output
+	webSocket js.Value = js.Global().Get("WebSocket") // WebSocket constructor
+	loc       js.Value = window.Get("location")       // Current page location
+	
+	// WebSocket connection variables
+	uri       string   = "ws:"                         // WebSocket URI scheme (ws: or wss:)
+	ws        js.Value                                 // Active WebSocket connection
+	protocol  string = loc.Get("protocol").String()   // Current protocol (http: or https:)
+	
+	// Configuration flags
+	isVerbose bool                                     // Enable verbose logging when ?verbose=true in URL
 )
 
+// MsgEvent represents an outgoing event message from client to server.
+// These messages are sent when user interactions occur in the browser.
 type MsgEvent struct {
-	Type  string `json:"type"`
-	ID    string `json:"id"`
-	Event string `json:"event"`
-	Data  string `json:"data"`
+	Type  string `json:"type"`  // Message type (always "data" for user events)
+	ID    string `json:"id"`    // Component ID that triggered the event
+	Event string `json:"event"`  // Event name (e.g., "Click", "DragStart")
+	Data  string `json:"data"`   // JSON-encoded event data
 }
 
+// DataEventIn represents an incoming command from the server.
+// The server sends these messages to update the DOM or request data.
 type DataEventIn struct {
-	ID        string      `json:"id"`
-	IdRet     string      `json:"id_ret"`
-	Type      string      `json:"type"`
-	Value     interface{} `json:"value"`
-	Propertie string      `json:"propertie"`
-	SubType   string      `json:"sub_type"`
+	ID        string      `json:"id"`        // DOM element ID to target
+	IdRet     string      `json:"id_ret"`    // Return ID for response messages
+	Type      string      `json:"type"`      // Operation type (fill, text, style, script, etc.)
+	Value     interface{} `json:"value"`     // Value to apply to the element
+	Propertie string      `json:"propertie"` // Property name for "propertie" type operations
+	SubType   string      `json:"sub_type"`  // Sub-type for "get" operations
 }
 
+// DataEventOut represents a response message from client to server.
+// These are sent in response to "get" type requests from the server.
 type DataEventOut struct {
-	Type  string      `json:"type"`
-	IdRet string      `json:"id_ret"`
-	Data  interface{} `json:"data"`
+	Type  string      `json:"type"`   // Response type (always "get" for responses)
+	IdRet string      `json:"id_ret"` // Return ID matching the request
+	Data  interface{} `json:"data"`   // Requested data from the DOM
 }
 
+// connect establishes a WebSocket connection to the LiveView server.
+// It sets up all necessary event handlers for WebSocket lifecycle and message processing.
+// The connection URL is automatically determined from the current page location.
 func connect() {
 	document = js.Global().Get("document")
 	window = js.Global().Get("window")
@@ -192,8 +214,13 @@ func connect() {
 
 }
 
+// main is the entry point for the WebAssembly module.
+// It initializes the WebSocket connection, sets up global JavaScript functions,
+// configures auto-reconnection, and initializes the drag-and-drop system.
+// The module runs indefinitely, maintaining the connection and handling events.
 func main() {
-	// Configurar logging
+	// Configure verbose logging based on URL parameters
+	// Enable with ?verbose=true or ?debug=true in the URL
 	verbose := js.Global().Get("location").Get("search").String()
 	isVerbose = strings.Contains(verbose, "verbose=true") || strings.Contains(verbose, "debug=true")
 	
@@ -204,36 +231,47 @@ func main() {
 	document.Call("getElementById", "content").Set("innerHTML", "Disconnected")
 	connect()
 
+	// Set up auto-reconnection mechanism
+	// Checks WebSocket connection status every second and reconnects if needed
+	// ReadyState: 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
 	js.Global().Call("setInterval", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if ws.Get("readyState").Int() != 1 {
+		if ws.Get("readyState").Int() != 1 { // Not OPEN
 			if isVerbose {
 				fmt.Println("[WASM] WebSocket disconnected, reconnecting...")
 			}
 			connect()
 		}
 		return nil
-	}), 1000)
+	}), 1000) // Check every 1 second
 
-	js.Global().Set("ws", ws)
+	// Expose WebSocket and utility functions to global JavaScript scope
+	// This allows debugging and manual control from browser console
+	js.Global().Set("ws", ws) // Access WebSocket via window.ws
 	js.Global().Set("connect", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		connect()
 		return nil
-	}))
+	})) // Manual reconnect via window.connect()
 
+	// Register the send_event function for DOM elements to communicate with server
+	// Usage: send_event('component-id', 'EventName', data)
+	// The data parameter can be a string or JavaScript object (automatically serialized)
 	js.Global().Set("send_event", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		id := args[0].String()
-		event := args[1].String()
-		data := ""
+		id := args[0].String()    // Component ID
+		event := args[1].String() // Event name
+		data := ""               // Optional event data
+		
 		if len(args) == 3 {
-			// Check if the third argument is an object
+			// Handle both string and object data types
 			if args[2].Type() == js.TypeObject {
-				// Convert JavaScript object to JSON string
+				// Serialize JavaScript objects to JSON for transmission
 				jsonData := js.Global().Get("JSON").Call("stringify", args[2])
 				data = jsonData.String()
 			} else {
+				// Use string data as-is
 				data = args[2].String()
 			}
 		}
+		
 		if isVerbose {
 			fmt.Printf("[WASM] send_event: id=%s event=%s data=%s\n", id, event, data)
 		}
@@ -241,17 +279,29 @@ func main() {
 		return nil
 	}))
 	
-	// Initialize drag & drop handling
+	// Initialize the generic drag & drop system
+	// This sets up event listeners for all elements with class="draggable"
 	initDragAndDrop()
 	
-	// Log inicial
+	// Log successful initialization
 	if isVerbose {
-		fmt.Println("[WASM] LiveView WASM initialized")
+		fmt.Println("[WASM] LiveView WASM initialized successfully")
 	}
 	
+	// Keep the WebAssembly module running indefinitely
+	// This is required for WASM modules to maintain event listeners
 	<-make(chan struct{})
 }
 
+// GetValue converts a JavaScript value to its Go equivalent.
+// This function handles type conversion between JavaScript and Go types,
+// ensuring proper data representation when retrieving DOM properties.
+//
+// Supported conversions:
+//   - Boolean -> bool
+//   - Number -> int
+//   - String -> string
+//   - Null/Undefined -> nil
 func GetValue(prop js.Value) interface{} {
 	switch prop.Type() {
 	case js.TypeBoolean:
@@ -268,9 +318,18 @@ func GetValue(prop js.Value) interface{} {
 	return nil
 }
 
+// sendEvent transmits a user event to the server via WebSocket.
+// This is the primary mechanism for client-to-server communication in LiveView.
+//
+// Parameters:
+//   - id: The component ID that triggered the event
+//   - event: The event name (e.g., "Click", "Input", "DragStart")
+//   - data: Optional event data as a JSON string
+//
+// The message is sent as JSON over the WebSocket connection.
 func sendEvent(id string, event string, data string) {
 	msgEvent := MsgEvent{
-		Type:  "data",
+		Type:  "data",  // Always "data" for user-triggered events
 		ID:    id,
 		Event: event,
 		Data:  data,
@@ -279,23 +338,42 @@ func sendEvent(id string, event string, data string) {
 	ws.Call("send", string(jsonMsg))
 }
 
+// initDragAndDrop initializes the generic drag-and-drop system.
+// This function sets up event listeners for mousedown, mousemove, and mouseup events
+// to enable dragging functionality for any element with the "draggable" class.
+//
+// The system supports:
+//   - Generic dragging for any element with class="draggable"
+//   - Automatic position updates during drag
+//   - Throttled server updates to prevent overwhelming the WebSocket
+//   - Z-index management to ensure draggable elements stay on top
+//   - Backward compatibility with legacy "BoxDrag" events
+//
+// Elements become draggable by adding:
+//   - class="draggable" (required)
+//   - data-element-id="unique-id" (required)
+//   - data-component-id="owner-component" (required)
+//   - data-drag-disabled="true" (optional, to temporarily disable dragging)
 func initDragAndDrop() {
-	// Create drag state object for generic drag and drop
+	// Initialize drag state tracking object
+	// This maintains the current drag state across mouse events
 	dragState := map[string]interface{}{
-		"isDragging":     false,
-		"draggedElement": "",
-		"startX":         0,
-		"startY":         0,
-		"initX":          0,
-		"initY":          0,
-		"lastUpdate":     0,
-		"componentId":    "", // The component that owns the draggable element
+		"isDragging":     false, // Whether a drag operation is in progress
+		"draggedElement": "",    // ID of the element being dragged
+		"startX":         0,     // Initial mouse X position
+		"startY":         0,     // Initial mouse Y position
+		"initX":          0,     // Initial element X position
+		"initY":          0,     // Initial element Y position
+		"lastUpdate":     0,     // Timestamp of last server update (for throttling)
+		"componentId":    "",    // ID of the component that owns the draggable element
 	}
 	
-	// Set global drag state
+	// Expose drag state globally for debugging and external access
 	js.Global().Set("dragState", dragState)
 	
-	// Mousedown handler - generic for any draggable element
+	// mouseDownHandler handles the initial mouse down event to start dragging.
+	// It walks up the DOM tree to find a draggable element, checks if dragging
+	// is enabled, captures initial positions, and sends DragStart events to the server.
 	mouseDownHandler := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		e := args[0]
 		target := e.Get("target")
@@ -305,10 +383,12 @@ func initDragAndDrop() {
 		}
 		
 		// Walk up the DOM tree to find a draggable element
+		// This allows clicks on child elements to still trigger dragging on the parent
 		for !target.IsNull() && !target.Equal(document.Get("body")) {
 			classList := target.Get("classList")
 			
 			// Skip elements with pointer-events: none
+			// These are typically decorative elements that shouldn't be interactive
 			style := window.Call("getComputedStyle", target)
 			pointerEvents := style.Get("pointerEvents").String()
 			if pointerEvents == "none" {
@@ -326,7 +406,9 @@ func initDragAndDrop() {
 				if isVerbose {
 					fmt.Printf("[WASM] Found draggable element: %s\n", target.Get("id").String())
 				}
-				// Check if dragging is disabled on this element
+				// Check if dragging is temporarily disabled
+				// This is useful for elements that should be draggable sometimes but not always
+				// (e.g., disabled during connection mode in flow diagrams)
 				if target.Call("hasAttribute", "data-drag-disabled").Bool() {
 					return nil
 				}

@@ -1,3 +1,38 @@
+// Package liveview provides a real-time web framework for Go that enables
+// server-side rendering with WebSocket-based reactivity, inspired by Phoenix LiveView.
+//
+// The framework allows you to build rich, interactive web applications without
+// writing JavaScript, using server-rendered HTML that updates in real-time via
+// WebSocket connections.
+//
+// Key Features:
+//   - Server-side rendering with real-time updates
+//   - WebSocket-based bidirectional communication
+//   - Component-based architecture
+//   - Automatic DOM diffing and patching
+//   - Built-in drag and drop support
+//   - State management and lifecycle hooks
+//   - Zero JavaScript required for basic functionality
+//
+// Basic Usage:
+//
+//	type Counter struct {
+//	    *liveview.ComponentDriver[*Counter]
+//	    Count int
+//	}
+//
+//	func (c *Counter) Start() {
+//	    c.Count = 0
+//	    c.Commit()
+//	}
+//
+//	func (c *Counter) GetTemplate() string {
+//	    return `<div>Count: {{.Count}}</div>`
+//	}
+//
+//	func (c *Counter) GetDriver() liveview.LiveDriver {
+//	    return c
+//	}
 package liveview
 
 import (
@@ -21,30 +56,74 @@ var (
 	mu sync.Mutex
 )
 
-// Component is the interface that all LiveView components must implement.
-// It defines the core contract for creating interactive, server-rendered components.
+// Component defines the interface that all LiveView components must implement.
+// Components are the building blocks of LiveView applications, encapsulating
+// both state and behavior in a single, reusable unit.
+//
+// Every component has three essential parts:
+//   - Template: HTML template that defines the component's visual representation
+//   - State: Data fields that control what is rendered
+//   - Lifecycle: Methods that handle initialization and events
+//
+// Components automatically re-render when their state changes via Commit(),
+// and updates are efficiently sent to the client via WebSocket.
 type Component interface {
 	// GetTemplate returns the HTML template string for rendering the component.
-	// The template uses Go's text/template syntax with the component as context {{.}}
+	// The template uses Go's text/template syntax with the component instance
+	// as the root context (accessible via {{.}}).
+	//
+	// Example:
+	//   func (c *MyComponent) GetTemplate() string {
+	//       return `<div>{{.Title}}: {{.Value}}</div>`
+	//   }
 	GetTemplate() string
 	
 	// Start is called when the component is mounted and initialized.
-	// Use this method to set initial state and perform setup logic.
+	// Use this method to set initial state, start background tasks,
+	// or perform any setup logic required by the component.
+	//
+	// This method is called once during the component lifecycle,
+	// after the driver is initialized but before first render.
+	//
+	// Example:
+	//   func (c *MyComponent) Start() {
+	//       c.Value = "initial"
+	//       c.LoadData()
+	//       c.Commit()
+	//   }
 	Start()
 	
 	// GetDriver returns the LiveDriver instance associated with this component.
-	// The driver handles WebSocket communication and DOM updates.
+	// The driver handles WebSocket communication, DOM updates, and event routing.
+	// Typically, components embed *ComponentDriver[T] which implements this method.
+	//
+	// Example:
+	//   func (c *MyComponent) GetDriver() LiveDriver {
+	//       return c.ComponentDriver
+	//   }
 	GetDriver() LiveDriver
 }
 
-// LiveDriver is the interface that manages component lifecycle, WebSocket communication,
-// and DOM manipulation. It acts as the bridge between server-side components and client-side UI.
+// LiveDriver manages the component lifecycle, WebSocket communication, and DOM manipulation.
+// It acts as the bridge between server-side Go components and client-side browser UI.
+//
+// The driver handles:
+//   - Component rendering and template execution
+//   - WebSocket message routing and event handling
+//   - DOM updates and synchronization
+//   - Child component mounting and management
+//   - State persistence and recovery
+//
+// Most components don't implement LiveDriver directly but instead embed
+// *ComponentDriver[T] which provides a full implementation.
 type LiveDriver interface {
-	// GetID returns the DOM element ID where this component is rendered
+	// GetID returns the DOM element ID where this component is rendered.
+	// This ID corresponds to the HTML element that contains the component's content.
 	GetID() string
 	
-	// SetID sets the DOM element ID for this component
-	SetID(string)
+	// SetID sets the DOM element ID for this component.
+	// This should match the ID of the HTML element where the component will render.
+	SetID(id string)
 	
 	// StartDriver initializes the driver with WebSocket channels and driver registry
 	// Deprecated: Use StartDriverWithContext for better resource management
@@ -54,32 +133,52 @@ type LiveDriver interface {
 	// This is the preferred method for starting drivers with proper lifecycle management
 	StartDriverWithContext(ctx context.Context, drivers *map[string]LiveDriver, channelIn *map[string]chan interface{}, channel chan map[string]interface{})
 	
-	// GetIDComponet returns the component's unique identifier
+	// GetIDComponet returns the component's unique identifier.
+	// This ID is used internally for routing events and managing component lifecycle.
+	// Note: This method name contains a typo that is preserved for backward compatibility.
 	GetIDComponet() string
 	
-	// ExecuteEvent triggers a named event on the component with optional data
+	// ExecuteEvent triggers a named event on the component with optional data.
+	// The event name should match a method on the component or an entry in the Events map.
+	//
+	// Example:
+	//   driver.ExecuteEvent("Click", map[string]interface{}{"x": 100, "y": 200})
 	ExecuteEvent(name string, data interface{})
 
-	// GetComponet returns the Component instance managed by this driver
+	// GetComponet returns the Component instance managed by this driver.
+	// Note: This method name contains a typo that is preserved for backward compatibility.
 	GetComponet() Component
 	
-	// Mount attaches a child component to this component
+	// Mount attaches a child component to this component.
+	// The child component will be rendered at {{mount "component-id"}} in the template.
+	//
+	// Example:
+	//   parent.Mount(liveview.NewDriver("sidebar", &Sidebar{}))
 	Mount(component Component) LiveDriver
 	
-	// MountWithStart mounts and immediately starts a child component
+	// MountWithStart mounts and immediately starts a child component.
+	// This is equivalent to calling Mount() followed by Start() on the child.
 	MountWithStart(id string, componentDriver LiveDriver) LiveDriver
 
-	// Commit triggers a re-render of the component and sends updates to the client
+	// Commit triggers a re-render of the component and sends updates to the client.
+	// Call this method after modifying component state to update the UI.
+	//
+	// Example:
+	//   c.Counter++
+	//   c.Commit()
 	Commit()
 	
-	// Remove removes a DOM element by ID
-	Remove(string)
+	// Remove removes a DOM element by its ID from the page.
+	// This directly manipulates the DOM without re-rendering the component.
+	Remove(elementID string)
 	
-	// AddNode adds a new DOM node with specified ID and HTML content
-	AddNode(string, string)
+	// AddNode adds a new DOM node with specified ID and HTML content.
+	// The HTML content is inserted as innerHTML of the target element.
+	AddNode(elementID string, html string)
 	
-	// FillValue updates the value of an input element
-	FillValue(string)
+	// FillValue updates the value attribute of an input element.
+	// This is useful for updating form fields without full re-render.
+	FillValue(value string)
 	
 	// SetHTML sets the innerHTML of an element
 	SetHTML(string)
