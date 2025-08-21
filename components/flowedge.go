@@ -229,13 +229,13 @@ func (e *FlowEdge) GetTemplate() string {
 		{{$midX := .GetMidX}}
 		{{$midY := .GetMidY}}
 		<rect class="edge-label-bg"
-		      x="{{sub $midX 30}}"
-		      y="{{sub $midY 10}}"
+		      x="{{.GetLabelX}}"
+		      y="{{.GetLabelY}}"
 		      width="60"
 		      height="20" />
 		<text class="edge-label"
 		      x="{{$midX}}"
-		      y="{{add $midY 3}}">
+		      y="{{.GetLabelTextY}}">
 			{{.Label}}
 		</text>
 	{{end}}
@@ -245,11 +245,11 @@ func (e *FlowEdge) GetTemplate() string {
 		{{$midY := .GetMidY}}
 		<circle class="edge-remove"
 		        cx="{{$midX}}"
-		        cy="{{sub $midY 20}}"
+		        cy="{{.GetRemoveY}}"
 		        r="8"
 		        onclick="send_event('{{.IdComponent}}', 'Remove', '{{.ID}}')" />
 		<text x="{{$midX}}"
-		      y="{{sub $midY 16}}"
+		      y="{{.GetRemoveTextY}}"
 		      text-anchor="middle"
 		      fill="white"
 		      font-size="12"
@@ -382,11 +382,23 @@ func (e *FlowEdge) GetLength() float64 {
 	return math.Sqrt(dx*dx + dy*dy)
 }
 
-// Helper functions for template
-func add(a, b int) int {
-	return a + b
+// Helper methods for template positioning
+func (e *FlowEdge) GetLabelX() int {
+	return e.GetMidX() - 30
 }
 
-func sub(a, b int) int {
-	return a - b
+func (e *FlowEdge) GetLabelY() int {
+	return e.GetMidY() - 10
+}
+
+func (e *FlowEdge) GetLabelTextY() int {
+	return e.GetMidY() + 3
+}
+
+func (e *FlowEdge) GetRemoveY() int {
+	return e.GetMidY() - 20
+}
+
+func (e *FlowEdge) GetRemoveTextY() int {
+	return e.GetMidY() - 16
 }
