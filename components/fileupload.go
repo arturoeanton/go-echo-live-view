@@ -2,6 +2,7 @@ package components
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -174,10 +175,20 @@ func (f *FileUpload) GetTemplate() string {
 					var reader = new FileReader();
 					readers.push(new Promise(resolve => {
 						reader.onload = e => {
-							files[i].data = e.target.result;
+							// Use text for JSON files, data URL for others
+							if (file.type === 'application/json' || file.name.endsWith('.json')) {
+								files[i].data = e.target.result;
+							} else {
+								files[i].data = e.target.result;
+							}
 							resolve();
 						};
-						reader.readAsDataURL(file);
+						// Read as text for JSON files, as data URL for others
+						if (file.type === 'application/json' || file.name.endsWith('.json')) {
+							reader.readAsText(file);
+						} else {
+							reader.readAsDataURL(file);
+						}
 					}));
 				});
 				Promise.all(readers).then(() => {
@@ -208,14 +219,19 @@ func (f *FileUpload) GetTemplate() string {
 					type: f.type
 				}));
 				var readers = [];
-				this.files.forEach((file, i) => {
+				Array.from(this.files).forEach((file, i) => {
 					var reader = new FileReader();
 					readers.push(new Promise(resolve => {
 						reader.onload = e => {
 							files[i].data = e.target.result;
 							resolve();
 						};
-						reader.readAsDataURL(file);
+						// Read as text for JSON files, as data URL for others
+						if (file.type === 'application/json' || file.name.endsWith('.json')) {
+							reader.readAsText(file);
+						} else {
+							reader.readAsDataURL(file);
+						}
 					}));
 				});
 				Promise.all(readers).then(() => {
@@ -361,11 +377,18 @@ func (f *FileUpload) GetFileData(index int) ([]byte, error) {
 	}
 	
 	data := f.Files[index].Data
-	if idx := strings.IndexByte(data, ','); idx != -1 {
-		data = data[idx+1:]
+	
+	// Check if it's a data URL (base64 encoded)
+	if strings.HasPrefix(data, "data:") {
+		// Extract base64 part after the comma
+		if idx := strings.IndexByte(data, ','); idx != -1 {
+			data = data[idx+1:]
+		}
+		return base64.StdEncoding.DecodeString(data)
 	}
 	
-	return base64.StdEncoding.DecodeString(data)
+	// If not a data URL, assume it's plain text (like JSON)
+	return []byte(data), nil
 }
 
 func parseJSONFiles(data string) []map[string]interface{} {
@@ -375,5 +398,10 @@ func parseJSONFiles(data string) []map[string]interface{} {
 	}
 	
 	var files []map[string]interface{}
+	// Parse JSON data
+	if err := json.Unmarshal([]byte(data), &files); err != nil {
+		// If parsing fails, return empty array
+		return []map[string]interface{}{}
+	}
 	return files
 }
