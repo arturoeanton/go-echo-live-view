@@ -1,3 +1,6 @@
+// Package main implementa una herramienta avanzada de diagramas de flujo
+// utilizando el framework Go Echo LiveView con características empresariales
+// como Virtual DOM, gestión de estado, registro de eventos y recuperación de errores.
 package main
 
 import (
@@ -15,78 +18,165 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 )
 
+// EnhancedFlowTool es el componente principal que gestiona toda la lógica
+// del editor de diagramas de flujo. Implementa características avanzadas como:
+// - Gestión de estado con persistencia automática
+// - Sistema de eventos pub/sub para comunicación entre componentes
+// - Caché de templates para optimización de renderizado
+// - Manejo de errores con ErrorBoundary para prevenir crashes
+// - Sistema completo de undo/redo con serialización de estado
+// - Edición en tiempo real con WebSocket
 type EnhancedFlowTool struct {
+	// ComponentDriver es el núcleo del framework que maneja:
+	// - Comunicación bidireccional con el navegador vía WebSocket
+	// - Actualización del DOM mediante comandos JSON
+	// - Gestión del ciclo de vida del componente
 	*liveview.ComponentDriver[*EnhancedFlowTool]
 	
-	Canvas         *components.FlowCanvas
-	Modal          *components.Modal
-	FileUpload     *components.FileUpload
-	Title          string
-	Description    string
-	NodeCount      int
-	EdgeCount      int
-	LastAction     string
-	ConnectingMode bool
-	ConnectingFrom string
-	DraggingBox    string
-	JsonExport     string
+	// === Componentes UI del Framework ===
+	Canvas         *components.FlowCanvas    // Canvas principal donde se dibujan los nodos y conexiones
+	Modal          *components.Modal         // Modal reutilizable para exportación JSON
+	FileUpload     *components.FileUpload    // Componente de carga de archivos con soporte para JSON
 	
-	// Edit mode fields
-	EditingMode    bool
-	EditingType    string // "box" or "edge"
-	EditingID      string
-	EditingValue   string
-	EditingCode    string  // Code metadata for boxes
+	// === Metadatos de la aplicación ===
+	Title          string // Título mostrado en la interfaz
+	Description    string // Descripción de las características
+	NodeCount      int    // Contador total de nodos (para generar IDs únicos)
+	EdgeCount      int    // Contador total de conexiones
+	LastAction     string // Descripción de la última acción realizada (para feedback al usuario)
 	
-	// New features
+	// === Estado del modo de conexión ===
+	ConnectingMode bool   // Indica si estamos en modo de conexión de nodos
+	ConnectingFrom string // ID del nodo origen cuando estamos conectando
+	
+	// === Estado del arrastre ===
+	DraggingBox    string // ID del nodo siendo arrastrado actualmente
+	
+	// === Exportación ===
+	JsonExport     string // JSON generado para exportación
+	
+	// === Estado del modo de edición ===
+	EditingMode    bool   // Si el modal de edición está activo
+	EditingType    string // Tipo de elemento siendo editado: "box" o "edge"
+	EditingID      string // ID del elemento siendo editado
+	EditingValue   string // Valor actual del campo de edición (nombre/etiqueta)
+	EditingCode    string // Código/script asociado al nodo (metadata adicional)
+	
+	// === Características avanzadas del framework ===
+	
+	// StateManager: Gestiona el estado persistente de la aplicación
+	// - Provee almacenamiento clave-valor con TTL configurable
+	// - Soporta diferentes backends (memoria, Redis, etc.)
+	// - Permite auto-guardado del diagrama completo
 	StateManager   *liveview.StateManager
+	
+	// EventRegistry: Sistema de eventos pub/sub
+	// - Permite comunicación desacoplada entre componentes
+	// - Soporta wildcards y métricas de eventos
+	// - Implementa throttling y debouncing automático
 	EventRegistry  *liveview.EventRegistry
+	
+	// TemplateCache: Optimiza el renderizado de templates
+	// - Cachea templates compilados para evitar re-procesamiento
+	// - Reduce el uso de CPU en actualizaciones frecuentes
+	// - Configurable con límites de memoria y TTL
 	TemplateCache  *liveview.TemplateCache
+	
+	// ErrorBoundary: Manejo robusto de errores
+	// - Captura panics y los convierte en errores manejables
+	// - Registra errores para debugging
+	// - Previene que errores crasheen toda la aplicación
 	ErrorBoundary  *liveview.ErrorBoundary
+	
+	// Lifecycle: Gestiona el ciclo de vida del componente
+	// - Hooks para OnBeforeMount, OnMounted, OnBeforeUnmount, etc.
+	// - Permite inicialización y limpieza ordenada de recursos
 	Lifecycle      *liveview.LifecycleManager
-	UndoStack      []string
-	RedoStack      []string
-	AutoSaveTimer  *time.Timer
+	
+	// === Sistema de Undo/Redo ===
+	UndoStack      []string // Pila de estados anteriores (JSON serializado)
+	RedoStack      []string // Pila de estados para rehacer (JSON serializado)
+	
+	// === Auto-guardado ===
+	AutoSaveTimer  *time.Timer // Timer para auto-guardado periódico
 }
 
+// NewEnhancedFlowTool crea una nueva instancia del editor de diagramas de flujo
+// con todas las características avanzadas del framework habilitadas.
+// Esta función:
+// - Inicializa todos los componentes del framework (StateManager, EventRegistry, etc.)
+// - Crea el canvas principal con nodos y conexiones de ejemplo
+// - Configura los callbacks para eventos de usuario
+// - Establece el sistema de auto-guardado y recuperación de estado
 func NewEnhancedFlowTool() *EnhancedFlowTool {
-	// Create canvas
+	// === Crear el canvas principal ===
+	// El canvas es el área de trabajo donde se dibujan los nodos y conexiones
+	// Dimensiones: 1200x600 píxeles
 	canvas := components.NewFlowCanvas("main-canvas", 1200, 600)
 	
-	// Create modal for JSON export
+	// === Crear modal para exportación JSON ===
+	// Modal reutilizable que muestra el diagrama serializado en formato JSON
+	// Permite copiar y compartir la configuración del diagrama
 	modal := &components.Modal{
 		Title:      "Export JSON",
-		Size:       "large",
-		Closable:   true,
-		ShowFooter: false,
-		IsOpen:     false,
+		Size:       "large",     // Tamaño grande para mostrar JSON completo
+		Closable:   true,       // Permite cerrar con botón X
+		ShowFooter: false,      // Sin botones de acción en el footer
+		IsOpen:     false,      // Inicialmente oculto
 	}
 	
-	// Initialize State Manager
+	// === Inicializar State Manager ===
+	// Gestiona el estado de la aplicación con persistencia y caché
+	// Características:
+	// - Provider en memoria para desarrollo (cambiar a Redis/DB en producción)
+	// - Caché habilitado para reducir accesos a la memoria
+	// - TTL de 5 minutos para datos en caché
 	stateManager := liveview.NewStateManager(&liveview.StateConfig{
-		Provider:     liveview.NewMemoryStateProvider(),
-		CacheEnabled: true,
-		CacheTTL:     5 * time.Minute,
+		Provider:     liveview.NewMemoryStateProvider(), // Almacenamiento en memoria
+		CacheEnabled: true,                              // Activa caché de estado
+		CacheTTL:     5 * time.Minute,                  // Tiempo de vida del caché
 	})
 	
-	// Initialize Event Registry with advanced features
+	// === Inicializar Event Registry ===
+	// Sistema pub/sub para comunicación entre componentes
+	// Características:
+	// - Máximo 10 handlers por evento (previene memory leaks)
+	// - Métricas habilitadas para debugging y optimización
+	// - Wildcards permite eventos como "box.*" para capturar todos los eventos de box
 	eventRegistry := liveview.NewEventRegistry(&liveview.EventRegistryConfig{
-		MaxHandlersPerEvent: 10,
-		EnableMetrics:       true,
-		EnableWildcards:     true,
+		MaxHandlersPerEvent: 10,    // Límite de handlers por evento
+		EnableMetrics:       true,  // Recolecta estadísticas de eventos
+		EnableWildcards:     true,  // Permite patrones como "*.click"
 	})
 	
-	// Initialize Template Cache
+	// === Inicializar Template Cache ===
+	// Caché de templates compilados para optimizar el renderizado
+	// Evita re-compilar templates en cada render, mejorando el rendimiento
+	// Características:
+	// - Límite de 10MB para prevenir uso excesivo de memoria
+	// - TTL de 5 minutos para refrescar templates modificados
+	// - Precompilación activa para optimizar el primer render
 	templateCache := liveview.NewTemplateCache(&liveview.TemplateCacheConfig{
-		MaxSize:          10 * 1024 * 1024, // 10MB
-		TTL:              5 * time.Minute,
-		EnablePrecompile: true,
+		MaxSize:          10 * 1024 * 1024, // Máximo 10MB de templates en caché
+		TTL:              5 * time.Minute,  // Refresca templates cada 5 minutos
+		EnablePrecompile: true,             // Compila templates al inicio
 	})
 	
-	// Initialize Error Boundary
+	// === Inicializar Error Boundary ===
+	// Captura y maneja errores/panics para prevenir crashes de la aplicación
+	// Parámetros:
+	// - 100: máximo de errores a almacenar en el log
+	// - true: modo debug activo (muestra stack traces)
 	errorBoundary := liveview.NewErrorBoundary(100, true)
 	
-	// Create initial flow diagram with enhanced components
+	// === Crear diagrama de flujo inicial con componentes de ejemplo ===
+	// Este diagrama muestra un flujo completo de procesamiento con:
+	// - Validación de entrada
+	// - Verificación de seguridad
+	// - Procesamiento de datos
+	// - Manejo de errores
+	// - Actualización de caché y logging
+	// - Notificaciones
 	startBox := components.NewFlowBox("start", "Start", components.BoxTypeStart, 50, 250)
 	initBox := components.NewFlowBox("init", "Initialize System", components.BoxTypeProcess, 200, 250)
 	validateBox := components.NewFlowBox("validate", "Validate Input", components.BoxTypeProcess, 400, 150)
@@ -166,13 +256,14 @@ func NewEnhancedFlowTool() *EnhancedFlowTool {
 		log.Printf("[Auto-save] Box %s moved to (%d, %d)", boxID, x, y)
 	}
 	
-	// Create file upload component for JSON import
+	// === Crear componente de carga de archivos para importación JSON ===
+	// Permite al usuario cargar diagramas guardados previamente
 	fileUpload := &components.FileUpload{
-		Label:    "Import JSON Diagram",
-		Accept:   ".json",
-		Multiple: false,
-		MaxSize:  5 * 1024 * 1024, // 5MB max
-		MaxFiles: 1,
+		Label:    "Import JSON Diagram",   // Etiqueta del botón
+		Accept:   ".json",                 // Solo archivos JSON
+		Multiple: false,                    // Un archivo a la vez
+		MaxSize:  5 * 1024 * 1024,         // Máximo 5MB por archivo
+		MaxFiles: 1,                        // Solo un archivo permitido
 	}
 	
 	tool := &EnhancedFlowTool{
@@ -203,47 +294,65 @@ func NewEnhancedFlowTool() *EnhancedFlowTool {
 	
 	tool.NodeCount = 3
 	
-	// Configure file upload callback
+	// === Configurar callback para carga de archivos ===
+	// Este callback se ejecuta cuando el usuario selecciona un archivo JSON
+	// Proceso:
+	// 1. Decodifica el archivo de base64 a texto
+	// 2. Parsea el JSON e importa el diagrama
+	// 3. Limpia el componente de carga
 	fileUpload.OnUpload = func(files []components.FileInfo) error {
 		if len(files) > 0 {
-			// Get the raw file data (base64 decoded)
+			// Obtener datos del archivo (decodificado de base64)
 			fileData, err := fileUpload.GetFileData(0)
 			if err != nil {
 				return err
 			}
-			// Import the diagram using the decoded JSON content
+			// Importar el diagrama usando el contenido JSON decodificado
 			tool.ImportDiagram(string(fileData))
-			// Clear the file upload after successful import
+			// Limpiar el componente después de importación exitosa
 			fileUpload.Clear()
 		}
 		return nil
 	}
 	
-	// Register event handlers with throttling and debouncing
+	// === Registrar manejadores de eventos con throttling y debouncing ===
+	// Configura todos los eventos del sistema con optimizaciones de rendimiento
 	tool.setupEnhancedEventHandlers()
 	
-	// Load saved state if available
+	// === Cargar estado guardado si está disponible ===
+	// Restaura el diagrama desde el almacenamiento persistente
 	tool.loadSavedState()
 	
-	// Disable auto-save for debugging
+	// === Auto-guardado deshabilitado para debugging ===
+	// Descomentar para habilitar guardado automático cada 30 segundos
 	// tool.startAutoSave()
 	
 	return tool
 }
 
+// setupEnhancedEventHandlers configura todos los manejadores de eventos del sistema
+// utilizando el Event Registry con características avanzadas como:
+// - Contexto para cancelación y timeouts
+// - Throttling para eventos de alta frecuencia (drag)
+// - Validación antes de procesar eventos
+// - Actualización del estado mediante StateManager
 func (f *EnhancedFlowTool) setupEnhancedEventHandlers() {
-	// Register handlers with event registry using context
+	// === Registrar manejadores con el event registry usando contexto ===
 	
-	// Box drag event
+	// === Evento de arrastre de nodo ===
+	// Se dispara cuando el usuario arrastra un nodo en el canvas
+	// Actualiza la posición en el estado para sincronización
 	f.EventRegistry.On("box.drag", func(ctx context.Context, event *liveview.Event) error {
-		// Update position in state
+		// Guardar última posición de arrastre en el estado
 		f.StateManager.Set("last_drag", event.Data)
 		return nil
 	})
 	
-	// Connection creation event
+	// === Evento de creación de conexión ===
+	// Se dispara cuando el usuario conecta dos nodos
+	// Valida que la conexión sea válida antes de crearla
 	f.EventRegistry.On("connection.create", func(ctx context.Context, event *liveview.Event) error {
-		// Validate connection before creating
+		// Validar conexión antes de crear
 		if from, _ := event.Data["from"].(string); from != "" {
 			if to, _ := event.Data["to"].(string); to != "" {
 				if f.validateConnection(from, to) {
@@ -255,50 +364,68 @@ func (f *EnhancedFlowTool) setupEnhancedEventHandlers() {
 		return nil
 	})
 	
-	// Auto-save event
+	// === Evento de auto-guardado ===
+	// Se dispara automáticamente cuando hay cambios en el diagrama
+	// Guarda el estado en el StateManager para persistencia
 	f.EventRegistry.On("diagram.change", func(ctx context.Context, event *liveview.Event) error {
 		f.saveState()
 		return nil
 	})
 }
 
+// loadSavedState carga el estado guardado del diagrama desde el StateManager
+// Intenta recuperar el último diagrama guardado para continuar el trabajo
+// Si encuentra un estado guardado, lo restaura en el canvas
 func (f *EnhancedFlowTool) loadSavedState() {
-	// Try to load from state manager
+	// Intentar cargar desde el state manager
 	if savedDiagram, err := f.StateManager.Get("flow_diagram"); err == nil && savedDiagram != nil {
 		if _, ok := savedDiagram.(map[string]interface{}); ok {
 			log.Println("Loaded saved diagram from state manager")
-			// Restore diagram state
+			// Restaurar estado del diagrama
 			f.LastAction = "Loaded saved diagram"
 		}
 	}
 }
 
+// startAutoSave inicia el guardado automático periódico del diagrama
+// Guarda el estado cada 30 segundos para prevenir pérdida de trabajo
+// El timer se reinicia automáticamente después de cada guardado
 func (f *EnhancedFlowTool) startAutoSave() {
 	f.AutoSaveTimer = time.AfterFunc(30*time.Second, func() {
 		f.saveState()
-		f.startAutoSave() // Restart timer
+		f.startAutoSave() // Reiniciar timer para próximo guardado
 	})
 }
 
+// saveState guarda el estado actual del diagrama en el StateManager
+// Almacena:
+// - Todos los nodos (boxes) con sus posiciones y propiedades
+// - Todas las conexiones (edges) entre nodos
+// - Timestamp del guardado para control de versiones
 func (f *EnhancedFlowTool) saveState() {
 	diagramData := map[string]interface{}{
-		"boxes":     f.Canvas.Boxes,
-		"edges":     f.Canvas.Edges,
-		"timestamp": time.Now(),
+		"boxes":     f.Canvas.Boxes,     // Nodos del diagrama
+		"edges":     f.Canvas.Edges,     // Conexiones entre nodos
+		"timestamp": time.Now(),         // Marca de tiempo del guardado
 	}
 	f.StateManager.Set("flow_diagram", diagramData)
 	f.StateManager.Set("last_save", time.Now())
 	log.Println("Diagram auto-saved")
 }
 
+// validateConnection valida si una conexión entre dos nodos es válida
+// Reglas de validación:
+// - No permite conexiones de un nodo hacia sí mismo (loops)
+// - No permite conexiones duplicadas entre los mismos nodos
+// Retorna true si la conexión es válida, false en caso contrario
 func (f *EnhancedFlowTool) validateConnection(from, to string) bool {
-	// Prevent self-connections
+	// Prevenir auto-conexiones (loops)
 	if from == to {
 		f.LastAction = "Cannot connect node to itself"
 		return false
 	}
 	
-	// Check for duplicate connections
+	// Verificar conexiones duplicadas
 	for _, edge := range f.Canvas.Edges {
 		if edge.FromBox == from && edge.ToBox == to {
 			f.LastAction = "Connection already exists"
@@ -309,16 +436,24 @@ func (f *EnhancedFlowTool) validateConnection(from, to string) bool {
 	return true
 }
 
+// createConnection crea una nueva conexión entre dos nodos
+// Proceso:
+// 1. Genera un ID único para la conexión usando timestamp
+// 2. Crea el objeto edge con los puertos de entrada/salida
+// 3. Calcula las posiciones de inicio y fin basadas en los nodos
+// 4. Agrega la conexión al canvas
+// 5. Emite evento de cambio para triggerar auto-guardado
 func (f *EnhancedFlowTool) createConnection(from, to string) {
+	// Generar ID único para la conexión
 	edgeID := fmt.Sprintf("edge_%s_%s_%d", from, to, time.Now().Unix())
 	edge := components.NewFlowEdge(edgeID, from, "out1", to, "in1")
 	
-	// Update positions
+	// Actualizar posiciones de la línea de conexión
 	if fromBox, ok := f.Canvas.Boxes[from]; ok {
 		if toBox, ok := f.Canvas.Boxes[to]; ok {
 			edge.UpdatePosition(
-				fromBox.X+fromBox.Width, fromBox.Y+fromBox.Height/2,
-				toBox.X, toBox.Y+toBox.Height/2,
+				fromBox.X+fromBox.Width, fromBox.Y+fromBox.Height/2,  // Punto de salida
+				toBox.X, toBox.Y+toBox.Height/2,                      // Punto de entrada
 			)
 		}
 	}
@@ -327,23 +462,29 @@ func (f *EnhancedFlowTool) createConnection(from, to string) {
 	f.EdgeCount++
 	f.LastAction = fmt.Sprintf("Created connection: %s -> %s", from, to)
 	
-	// Trigger change event
+	// Emitir evento de cambio para auto-guardado
 	f.EventRegistry.Emit("diagram.change", map[string]interface{}{
 		"type": "edge_added", 
 		"edge": edgeID,
 	})
 }
 
+// saveToUndoStack guarda el estado actual en la pila de deshacer
+// Se llama antes de cualquier operación que modifique el diagrama
+// Limpia la pila de rehacer ya que una nueva acción invalida el historial de rehacer
 func (f *EnhancedFlowTool) saveToUndoStack() {
-	// Save current state and clear redo stack (for normal operations)
+	// Guardar estado actual y limpiar pila de rehacer (para operaciones normales)
 	f.saveCurrentStateToUndoStack()
-	// Clear redo stack on new action
+	// Limpiar pila de rehacer en nueva acción
 	f.RedoStack = []string{}
 }
 
+// saveCurrentStateToUndoStack guarda el estado actual SIN limpiar la pila de rehacer
+// Usado internamente por las operaciones de undo/redo
+// Serializa todo el estado del diagrama a JSON para poder restaurarlo posteriormente
 func (f *EnhancedFlowTool) saveCurrentStateToUndoStack() {
-	// Save current state WITHOUT clearing redo stack (for undo/redo operations)
-	// Create a serializable state
+	// Guardar estado actual SIN limpiar pila de rehacer (para operaciones undo/redo)
+	// Crear un estado serializable
 	boxesData := make(map[string]map[string]interface{})
 	for id, box := range f.Canvas.Boxes {
 		boxData := map[string]interface{}{
@@ -392,12 +533,19 @@ func (f *EnhancedFlowTool) saveCurrentStateToUndoStack() {
 	stateJSON, _ := json.Marshal(state)
 	f.UndoStack = append(f.UndoStack, string(stateJSON))
 	
-	// Limit undo stack size
+	// Limitar tamaño de la pila de deshacer a 50 estados
+	// Previene uso excesivo de memoria en sesiones largas
 	if len(f.UndoStack) > 50 {
-		f.UndoStack = f.UndoStack[1:]
+		f.UndoStack = f.UndoStack[1:] // Eliminar el estado más antiguo
 	}
 }
 
+// Undo deshace la última acción realizada en el diagrama
+// Funcionalidad:
+// 1. Verifica que haya acciones para deshacer
+// 2. Guarda el estado actual en la pila de rehacer
+// 3. Restaura el estado anterior desde la pila de deshacer
+// 4. Actualiza la UI con los cambios
 func (f *EnhancedFlowTool) Undo(data interface{}) {
 	if len(f.UndoStack) == 0 {
 		f.LastAction = "Nothing to undo"
@@ -405,22 +553,25 @@ func (f *EnhancedFlowTool) Undo(data interface{}) {
 		return
 	}
 	
-	// Save current state to redo stack before undoing
+	// Guardar estado actual en pila de rehacer antes de deshacer
 	f.saveToRedoStack()
 	
-	// Get and remove the last state from undo stack
+	// Obtener y eliminar el último estado de la pila de deshacer
 	prevState := f.UndoStack[len(f.UndoStack)-1]
 	f.UndoStack = f.UndoStack[:len(f.UndoStack)-1]
 	
-	// Restore the state
+	// Restaurar el estado anterior
 	f.restoreState(prevState)
 	
 	f.LastAction = "Undo performed"
 	f.Commit()
 }
 
+// saveToRedoStack guarda el estado actual en la pila de rehacer
+// Se usa antes de deshacer una acción para poder rehacerla después
+// Es similar a saveToUndoStack pero apunta a la pila de rehacer
 func (f *EnhancedFlowTool) saveToRedoStack() {
-	// Save current state to redo stack (same as saveToUndoStack but for redo)
+	// Guardar estado actual en pila de rehacer (igual que saveToUndoStack pero para redo)
 	boxesData := make(map[string]map[string]interface{})
 	for id, box := range f.Canvas.Boxes {
 		boxData := map[string]interface{}{
@@ -469,6 +620,13 @@ func (f *EnhancedFlowTool) saveToRedoStack() {
 	f.RedoStack = append(f.RedoStack, string(stateJSON))
 }
 
+// restoreState restaura un estado previamente guardado del diagrama
+// Proceso:
+// 1. Deserializa el JSON del estado guardado
+// 2. Limpia el canvas actual
+// 3. Recrea todos los nodos con sus propiedades
+// 4. Recrea todas las conexiones
+// 5. Actualiza contadores y metadatos
 func (f *EnhancedFlowTool) restoreState(stateJSON string) {
 	var state map[string]interface{}
 	if err := json.Unmarshal([]byte(stateJSON), &state); err != nil {
@@ -476,21 +634,21 @@ func (f *EnhancedFlowTool) restoreState(stateJSON string) {
 		return
 	}
 	
-	// Clear current canvas
+	// Limpiar canvas actual
 	f.Canvas.Boxes = make(map[string]*components.FlowBox)
 	f.Canvas.Edges = make(map[string]*components.FlowEdge)
 	
-	// Restore boxes
+	// === Restaurar nodos (boxes) ===
 	if boxesData, ok := state["boxes"].(map[string]interface{}); ok {
 		for id, boxData := range boxesData {
 			if boxMap, ok := boxData.(map[string]interface{}); ok {
-				// Get box type
+				// Obtener tipo de nodo (proceso por defecto)
 				boxType := components.BoxTypeProcess
 				if typeStr, ok := boxMap["type"].(string); ok {
 					boxType = components.BoxType(typeStr)
 				}
 				
-				// Get dimensions with defaults
+				// Obtener dimensiones con valores por defecto
 				width := 120
 				height := 60
 				if w, ok := boxMap["width"].(float64); ok && w > 0 {
@@ -511,14 +669,14 @@ func (f *EnhancedFlowTool) restoreState(stateJSON string) {
 					Height: height,
 				}
 				
-				// Restore optional fields
+				// Restaurar campos opcionales
 				if desc, ok := boxMap["description"].(string); ok {
 					box.Description = desc
 				}
 				if color, ok := boxMap["color"].(string); ok {
 					box.Color = color
 				} else {
-					// Set default color based on type
+					// Establecer color por defecto según el tipo
 					switch boxType {
 					case components.BoxTypeStart:
 						box.Color = "#dcfce7"
@@ -533,19 +691,19 @@ func (f *EnhancedFlowTool) restoreState(stateJSON string) {
 					}
 				}
 				
-				// Restore Data field (including code)
+				// Restaurar campo Data (incluye código y metadatos del nodo)
 				if data, ok := boxMap["data"].(map[string]interface{}); ok {
 					box.Data = data
 				}
 				
-				// Register driver
+				// Registrar driver de LiveView para el componente
 				liveview.New(id, box)
 				f.Canvas.Boxes[id] = box
 			}
 		}
 	}
 	
-	// Restore edges
+	// === Restaurar conexiones (edges) ===
 	if edgesData, ok := state["edges"].(map[string]interface{}); ok {
 		for id, edgeData := range edgesData {
 			if edgeMap, ok := edgeData.(map[string]interface{}); ok {
@@ -642,9 +800,13 @@ func (f *EnhancedFlowTool) Start() {
 		f.FileUpload.Start()
 	}
 	
-	// Register all event handlers
+	// === Registrar todos los manejadores de eventos ===
+	// Los eventos se registran en el ComponentDriver y se ejecutan cuando
+	// el usuario interactúa con la UI a través del WebSocket
 	if f.ComponentDriver != nil {
-		// Enhanced event handlers
+		// === Eventos mejorados con ErrorBoundary ===
+		// AddNode: agrega un nuevo nodo al diagrama
+		// Usa ErrorBoundary para capturar errores y prevenir crashes
 		f.ComponentDriver.Events["AddNode"] = func(c *EnhancedFlowTool, data interface{}) {
 			f.ErrorBoundary.SafeExecute("add_node", func() error {
 				c.HandleAddNode(data)
@@ -670,7 +832,8 @@ func (f *EnhancedFlowTool) Start() {
 			c.AutoArrange(data)
 		}
 		
-		// Box interaction events
+		// === Eventos de interacción con nodos ===
+		// BoxClick: maneja clics en nodos para selección y conexión
 		f.ComponentDriver.Events["BoxClick"] = func(c *EnhancedFlowTool, data interface{}) {
 			log.Printf("📨 BoxClick event received: %v", data)
 			c.HandleBoxClick(data)
@@ -688,7 +851,8 @@ func (f *EnhancedFlowTool) Start() {
 			c.HandleMoveBox(data)
 		}
 		
-		// Canvas events
+		// === Eventos del canvas ===
+		// CanvasZoomIn: aumenta el zoom del canvas
 		f.ComponentDriver.Events["CanvasZoomIn"] = func(c *EnhancedFlowTool, data interface{}) {
 			c.HandleCanvasZoomIn(data)
 		}
@@ -706,7 +870,9 @@ func (f *EnhancedFlowTool) Start() {
 			c.HandleToggleConnectMode(data)
 		}
 		
-		// Generic drag events from WASM
+		// === Eventos genéricos de arrastre desde WASM ===
+		// El módulo WASM envía estos eventos cuando detecta arrastre
+		// DragStart: inicio del arrastre de cualquier elemento draggable
 		f.ComponentDriver.Events["DragStart"] = func(c *EnhancedFlowTool, data interface{}) {
 			log.Printf("📨 DragStart event received: %v", data)
 			c.HandleDragStart(data)
@@ -718,7 +884,8 @@ func (f *EnhancedFlowTool) Start() {
 			c.HandleDragEnd(data)
 		}
 		
-		// Backward compatibility: specific box drag events
+		// === Compatibilidad hacia atrás: eventos específicos de arrastre de nodos ===
+		// Mantiene compatibilidad con el sistema anterior de drag & drop
 		f.ComponentDriver.Events["BoxStartDrag"] = func(c *EnhancedFlowTool, data interface{}) {
 			log.Printf("📨 BoxStartDrag event received: %v", data)
 			c.HandleBoxStartDrag(data)
@@ -730,7 +897,8 @@ func (f *EnhancedFlowTool) Start() {
 			c.HandleBoxEndDrag(data)
 		}
 		
-		// Edit events
+		// === Eventos de edición ===
+		// EditBox: abre el modo de edición para un nodo
 		f.ComponentDriver.Events["EditBox"] = func(c *EnhancedFlowTool, data interface{}) {
 			c.HandleEditBox(data)
 		}
@@ -750,8 +918,13 @@ func (f *EnhancedFlowTool) Start() {
 	}
 }
 
+// GetTemplate retorna el template HTML principal de la aplicación
+// Utiliza el TemplateCache del framework para optimizar el renderizado:
+// - Si el template está en caché, usa la versión compilada
+// - Si no, retorna el template crudo (que será compilado y cacheado)
+// El template incluye todos los estilos CSS y estructura HTML
 func (f *EnhancedFlowTool) GetTemplate() string {
-	// Use cached template if available
+	// Usar template cacheado si está disponible
 	if cached, exists := f.TemplateCache.Get("flowtool_main"); exists {
 		var buf strings.Builder
 		cached.Compiled.Execute(&buf, f)
@@ -1370,17 +1543,26 @@ func (f *EnhancedFlowTool) GetTemplate() string {
 `
 }
 
-// ... (implement remaining handler methods similar to original but with enhanced features)
+// === Métodos de manejo de eventos y drivers ===
 
+// GetDriver retorna el driver de LiveView para este componente
+// Requerido por la interfaz LiveDriver del framework
 func (f *EnhancedFlowTool) GetDriver() liveview.LiveDriver {
 	return f
 }
 
+// HandleAddNode agrega un nuevo nodo al diagrama
+// Proceso:
+// 1. Guarda el estado actual para poder deshacer
+// 2. Calcula la posición del nuevo nodo (distribución automática)
+// 3. Crea el nodo con el tipo especificado
+// 4. Registra el componente con LiveView
+// 5. Actualiza el StateManager y renderiza
 func (f *EnhancedFlowTool) HandleAddNode(data interface{}) {
-	// Save state BEFORE making changes
+	// Guardar estado ANTES de hacer cambios (para undo)
 	f.saveToUndoStack()
 	
-	// Implementation with VDOM update
+	// Obtener tipo de nodo desde el evento
 	nodeType := data.(string)
 	
 	x := 100 + (f.NodeCount * 50) % 1000
@@ -1408,11 +1590,11 @@ func (f *EnhancedFlowTool) HandleAddNode(data interface{}) {
 	newBox := components.NewFlowBox(nodeID, label, boxType, x, y)
 	
 	if f.Canvas != nil {
-		// Create and register the driver properly
+		// Crear y registrar el driver correctamente con LiveView
 		liveview.New(nodeID, newBox)
 		f.Canvas.AddBox(newBox)
 		
-		// Update state manager
+		// Actualizar state manager con el último nodo agregado
 		f.StateManager.Set("last_added_node", nodeID)
 	}
 	
@@ -1424,11 +1606,17 @@ func (f *EnhancedFlowTool) HandleAddNode(data interface{}) {
 	}
 }
 
+// AutoArrange organiza automáticamente los nodos en una cuadrícula
+// Algoritmo:
+// 1. Recolecta todos los nodos del canvas
+// 2. Los distribuye en una cuadrícula de 4 columnas
+// 3. Actualiza las posiciones de todas las conexiones
+// 4. Guarda el estado para poder deshacer
 func (f *EnhancedFlowTool) AutoArrange(data interface{}) {
-	// Save state BEFORE making changes
+	// Guardar estado ANTES de hacer cambios
 	f.saveToUndoStack()
 	
-	// Auto-arrange nodes using a simple grid layout
+	// Auto-organizar nodos usando un layout de cuadrícula simple
 	boxList := make([]*components.FlowBox, 0, len(f.Canvas.Boxes))
 	for _, box := range f.Canvas.Boxes {
 		boxList = append(boxList, box)
@@ -1446,15 +1634,16 @@ func (f *EnhancedFlowTool) AutoArrange(data interface{}) {
 		box.Y = startY + (row * spacing)
 	}
 	
-	// Update edge positions
+	// Actualizar posiciones de las conexiones
 	f.updateEdgePositions()
 	
 	f.LastAction = "Nodes auto-arranged"
 	f.Commit()
 }
 
-// ... (implement remaining methods)
-
+// ClearDiagram limpia completamente el diagrama
+// Elimina todos los nodos y conexiones del canvas
+// Guarda el estado previo para poder deshacer
 func (f *EnhancedFlowTool) ClearDiagram(data interface{}) {
 	f.saveToUndoStack()
 	f.Canvas.Clear()
@@ -1464,6 +1653,12 @@ func (f *EnhancedFlowTool) ClearDiagram(data interface{}) {
 	f.Commit()
 }
 
+// ExportDiagram exporta el diagrama actual a formato JSON
+// El JSON incluye:
+// - Todos los nodos con sus posiciones y código asociado
+// - Todas las conexiones entre nodos
+// - Metadatos (fecha, versión, herramienta)
+// El JSON se muestra en un modal para que el usuario pueda copiarlo
 func (f *EnhancedFlowTool) ExportDiagram(data interface{}) {
 	if f.Canvas == nil {
 		f.LastAction = "No canvas to export"
@@ -1473,7 +1668,7 @@ func (f *EnhancedFlowTool) ExportDiagram(data interface{}) {
 		return
 	}
 	
-	// Create custom export data that includes code metadata
+	// Crear datos de exportación personalizados que incluyen metadatos de código
 	boxes := []map[string]interface{}{}
 	for _, box := range f.Canvas.Boxes {
 		boxData := map[string]interface{}{
@@ -1484,12 +1679,12 @@ func (f *EnhancedFlowTool) ExportDiagram(data interface{}) {
 			"y":     box.Y,
 		}
 		
-		// Include code if present
+		// Incluir código si está presente
 		if box.Data != nil {
 			if code, ok := box.Data["code"].(string); ok && code != "" {
 				boxData["code"] = code
 			}
-			// Include any other metadata
+			// Incluir cualquier otro metadato del nodo
 			for key, value := range box.Data {
 				if key != "code" {
 					boxData[key] = value
@@ -1523,7 +1718,7 @@ func (f *EnhancedFlowTool) ExportDiagram(data interface{}) {
 		},
 	}
 	
-	// Convert to JSON string for display
+	// Convertir a JSON string para mostrar en el modal
 	jsonBytes, err := json.MarshalIndent(exportData, "", "  ")
 	if err != nil {
 		f.LastAction = fmt.Sprintf("Export error: %v", err)
@@ -1695,10 +1890,17 @@ func (f *EnhancedFlowTool) HandleBoxClick(data interface{}) {
 	}
 }
 
+// DeleteBox elimina un nodo del diagrama
+// Proceso:
+// 1. Identifica el nodo a eliminar
+// 2. Guarda el estado para poder deshacer
+// 3. Elimina todas las conexiones relacionadas con el nodo
+// 4. Elimina el nodo del canvas
+// 5. Actualiza contadores y renderiza
 func (f *EnhancedFlowTool) DeleteBox(data interface{}) {
 	var boxID string
 	
-	// Handle different data types
+	// Manejar diferentes tipos de datos del evento
 	if str, ok := data.(string); ok {
 		boxID = str
 	} else if dataMap, ok := data.(map[string]interface{}); ok {
@@ -1713,10 +1915,10 @@ func (f *EnhancedFlowTool) DeleteBox(data interface{}) {
 		return
 	}
 	
-	// Save state for undo
+	// Guardar estado para deshacer
 	f.saveToUndoStack()
 	
-	// Remove all edges connected to this box
+	// Eliminar todas las conexiones conectadas a este nodo
 	for edgeID, edge := range f.Canvas.Edges {
 		if edge.FromBox == boxID || edge.ToBox == boxID {
 			delete(f.Canvas.Edges, edgeID)
@@ -1738,10 +1940,12 @@ func (f *EnhancedFlowTool) DeleteBox(data interface{}) {
 	}
 }
 
+// DeleteEdge elimina una conexión entre nodos
+// Similar a DeleteBox pero para conexiones
 func (f *EnhancedFlowTool) DeleteEdge(data interface{}) {
 	var edgeID string
 	
-	// Handle different data types
+	// Manejar diferentes tipos de datos
 	if str, ok := data.(string); ok {
 		edgeID = str
 	} else if dataMap, ok := data.(map[string]interface{}); ok {
@@ -1773,6 +1977,8 @@ func (f *EnhancedFlowTool) DeleteEdge(data interface{}) {
 	}
 }
 
+// SelectEdge selecciona una conexión para editar o eliminar
+// Solo una conexión puede estar seleccionada a la vez
 func (f *EnhancedFlowTool) SelectEdge(data interface{}) {
 	edgeID, ok := data.(string)
 	if !ok {
@@ -1788,12 +1994,12 @@ func (f *EnhancedFlowTool) SelectEdge(data interface{}) {
 		return
 	}
 	
-	// Deselect other edges
+	// Deseleccionar otras conexiones
 	for _, e := range f.Canvas.Edges {
 		e.Selected = false
 	}
 	
-	// Select this edge
+	// Seleccionar esta conexión (toggle)
 	edge.Selected = !edge.Selected
 	f.LastAction = fmt.Sprintf("Selected edge: %s", edgeID)
 	
@@ -1802,6 +2008,9 @@ func (f *EnhancedFlowTool) SelectEdge(data interface{}) {
 	}
 }
 
+// HandleMoveBox mueve un nodo usando las teclas de dirección
+// Permite ajustar la posición del nodo en incrementos de 20 píxeles
+// Respeta los límites del canvas para evitar que el nodo salga del área visible
 func (f *EnhancedFlowTool) HandleMoveBox(data interface{}) {
 	moveData, ok := data.(map[string]interface{})
 	if !ok {
@@ -1814,7 +2023,7 @@ func (f *EnhancedFlowTool) HandleMoveBox(data interface{}) {
 	log.Printf("HandleMoveBox: boxID=%s, direction=%s", boxID, direction)
 	
 	if box, ok := f.Canvas.Boxes[boxID]; ok {
-		step := 20 // Pixels to move
+		step := 20 // Píxeles a mover en cada paso
 		
 		switch direction {
 		case "up":
@@ -1839,7 +2048,7 @@ func (f *EnhancedFlowTool) HandleMoveBox(data interface{}) {
 			}
 		}
 		
-		// Update connected edges
+		// Actualizar posiciones de las conexiones relacionadas
 		f.updateEdgePositions()
 		
 		f.LastAction = fmt.Sprintf("Moved box %s to (%d, %d)", boxID, box.X, box.Y)
@@ -1850,13 +2059,18 @@ func (f *EnhancedFlowTool) HandleMoveBox(data interface{}) {
 	}
 }
 
+// HandleToggleConnectMode activa/desactiva el modo de conexión
+// En modo conexión:
+// - El drag & drop se desactiva
+// - Hacer clic en dos nodos los conecta
+// - ESC o clic en el botón desactiva el modo
 func (f *EnhancedFlowTool) HandleToggleConnectMode(data interface{}) {
 	log.Printf("🔗 HandleToggleConnectMode called with data: %v", data)
 	f.ConnectingMode = !f.ConnectingMode
 	f.ConnectingFrom = ""
 	log.Printf("🔗 ConnectingMode toggled to: %v", f.ConnectingMode)
 	
-	// Clear all selections
+	// Limpiar todas las selecciones
 	for _, box := range f.Canvas.Boxes {
 		box.Selected = false
 	}
@@ -1874,18 +2088,23 @@ func (f *EnhancedFlowTool) HandleToggleConnectMode(data interface{}) {
 	}
 }
 
-// Backward compatibility methods for old BoxDrag events
+// === Métodos de compatibilidad hacia atrás para eventos BoxDrag antiguos ===
+// Estos métodos convierten el formato antiguo de eventos al nuevo formato genérico
+
+// HandleBoxStartDrag maneja el formato antiguo de inicio de arrastre
+// Convierte {id, x, y} al nuevo formato {element, x, y}
 func (f *EnhancedFlowTool) HandleBoxStartDrag(data interface{}) {
 	log.Printf("🚀 HandleBoxStartDrag called with data: %v (%T)", data, data)
 	
-	// Convert old format to new format and delegate to HandleDragStart
+	// Convertir formato antiguo a nuevo formato y delegar a HandleDragStart
 	if dataStr, ok := data.(string); ok {
 		var oldData map[string]interface{}
 		if err := json.Unmarshal([]byte(dataStr), &oldData); err == nil {
 			// Convert old format {id, x, y} to new format {element, x, y}
 			if id, hasId := oldData["id"].(string); hasId {
+				// Convertir formato {id, x, y} a {element, x, y}
 				newData := map[string]interface{}{
-					"element": "box-" + id,
+					"element": "box-" + id,  // Agregar prefijo para nuevo formato
 					"x":       oldData["x"],
 					"y":       oldData["y"],
 				}
@@ -1896,12 +2115,13 @@ func (f *EnhancedFlowTool) HandleBoxStartDrag(data interface{}) {
 		}
 	}
 	
-	// Fallback to direct call
+	// Fallback: llamada directa si no se puede convertir
 	f.HandleDragStart(data)
 }
 
+// HandleBoxDrag maneja el formato antiguo de arrastre continuo
 func (f *EnhancedFlowTool) HandleBoxDrag(data interface{}) {
-	// Convert old format to new format and delegate to HandleDragMove
+	// Convertir formato antiguo a nuevo formato y delegar a HandleDragMove
 	if dataStr, ok := data.(string); ok {
 		var oldData map[string]interface{}
 		if err := json.Unmarshal([]byte(dataStr), &oldData); err == nil {
@@ -1937,18 +2157,23 @@ func (f *EnhancedFlowTool) HandleBoxEndDrag(data interface{}) {
 		return
 	}
 	
-	// Fallback to direct call
+	// Fallback: llamada directa si no se puede convertir
 	f.HandleDragEnd(data)
 }
 
+// === Métodos genéricos de arrastre (nuevo sistema WASM) ===
+
+// HandleDragStart maneja el inicio del arrastre de cualquier elemento draggable
+// Este es el nuevo formato genérico que envía el módulo WASM
+// Formato esperado: {element: "box-id", x: mouseX, y: mouseY}
 func (f *EnhancedFlowTool) HandleDragStart(data interface{}) {
-	// Handle generic drag start
+	// Manejar inicio de arrastre genérico
 	log.Printf("🚀 DragStart called with data: %v (%T)", data, data)
 	
-	// Save state BEFORE starting drag
+	// Guardar estado ANTES de iniciar el arrastre (para undo)
 	f.saveToUndoStack()
 	
-	// Try to parse as JSON string first
+	// Intentar parsear como JSON string primero
 	if dataStr, ok := data.(string); ok {
 		var dataMap map[string]interface{}
 		if err := json.Unmarshal([]byte(dataStr), &dataMap); err == nil {
@@ -1959,7 +2184,7 @@ func (f *EnhancedFlowTool) HandleDragStart(data interface{}) {
 	
 	if dataMap, ok := data.(map[string]interface{}); ok {
 		if element, ok := dataMap["element"].(string); ok {
-			// Extract box ID from element ID (format: "box-{id}")
+			// Extraer ID del nodo desde el ID del elemento (formato: "box-{id}")
 			if strings.HasPrefix(element, "box-") {
 				boxID := strings.TrimPrefix(element, "box-")
 				f.DraggingBox = boxID
@@ -1980,6 +2205,9 @@ func (f *EnhancedFlowTool) HandleDragStart(data interface{}) {
 	}
 }
 
+// HandleDragMove maneja el movimiento continuo durante el arrastre
+// Se llama repetidamente mientras el usuario mueve el mouse con el botón presionado
+// Actualiza la posición del nodo y las conexiones en tiempo real
 func (f *EnhancedFlowTool) HandleDragMove(data interface{}) {
 	if f.DraggingBox == "" {
 		log.Printf("BoxDrag: No box being dragged")
@@ -1988,7 +2216,7 @@ func (f *EnhancedFlowTool) HandleDragMove(data interface{}) {
 	
 	log.Printf("BoxDrag called for box %s with data: %v", f.DraggingBox, data)
 	
-	// Try to parse as JSON string first
+	// Intentar parsear como JSON string primero
 	if dataStr, ok := data.(string); ok {
 		var dataMap map[string]interface{}
 		if err := json.Unmarshal([]byte(dataStr), &dataMap); err == nil {
@@ -1996,7 +2224,7 @@ func (f *EnhancedFlowTool) HandleDragMove(data interface{}) {
 		}
 	}
 	
-	// Handle drag movement with VDOM updates
+	// Manejar movimiento de arrastre con actualizaciones VDOM
 	if dataMap, ok := data.(map[string]interface{}); ok {
 		if box, exists := f.Canvas.Boxes[f.DraggingBox]; exists {
 			oldX, oldY := box.X, box.Y
@@ -2010,7 +2238,7 @@ func (f *EnhancedFlowTool) HandleDragMove(data interface{}) {
 				log.Printf("Box %s moved Y: %d -> %d", f.DraggingBox, oldY, box.Y)
 			}
 			
-			// Constrain to canvas bounds
+			// Restringir a los límites del canvas
 			if box.X < 0 {
 				box.X = 0
 			}
@@ -2026,18 +2254,19 @@ func (f *EnhancedFlowTool) HandleDragMove(data interface{}) {
 				box.Y = maxY
 			}
 			
-			// Update state if position changed
+			// Actualizar estado si la posición cambió
 			if oldX != box.X || oldY != box.Y {
+				// Guardar posición en StateManager
 				f.StateManager.Set("box_position_"+f.DraggingBox, map[string]interface{}{
 					"x": box.X,
 					"y": box.Y,
 				})
 			}
 			
-			// Update edge positions
+			// Actualizar posiciones de las conexiones
 			f.updateEdgePositions()
 			
-			// Emit drag event for auto-save
+			// Emitir evento de arrastre para auto-guardado
 			f.EventRegistry.Emit("diagram.change", map[string]interface{}{
 				"type": "box_moved",
 				"box":  f.DraggingBox,
@@ -2045,12 +2274,15 @@ func (f *EnhancedFlowTool) HandleDragMove(data interface{}) {
 		}
 	}
 	
-	// Call Commit to update the edges
+	// Llamar Commit para actualizar las conexiones en la UI
 	if f.ComponentDriver != nil {
 		f.Commit()
 	}
 }
 
+// HandleDragEnd maneja el fin del arrastre cuando el usuario suelta el mouse
+// Finaliza el estado de arrastre y actualiza la UI
+// NO guarda el estado aquí porque ya se guardó en HandleDragStart
 func (f *EnhancedFlowTool) HandleDragEnd(data interface{}) {
 	if f.DraggingBox != "" {
 		if box, exists := f.Canvas.Boxes[f.DraggingBox]; exists {
@@ -2060,7 +2292,7 @@ func (f *EnhancedFlowTool) HandleDragEnd(data interface{}) {
 			}
 		}
 		f.LastAction = fmt.Sprintf("Finished dragging %s", f.DraggingBox)
-		// Don't save state here - it was already saved in HandleDragStart
+		// NO guardar estado aquí - ya se guardó en HandleDragStart
 		f.DraggingBox = ""
 	}
 	
@@ -2069,12 +2301,17 @@ func (f *EnhancedFlowTool) HandleDragEnd(data interface{}) {
 	}
 }
 
+// updateEdgePositions actualiza las posiciones de todas las conexiones
+// Se llama cuando un nodo se mueve para mantener las líneas conectadas
+// Calcula los puntos de inicio y fin basados en las posiciones de los nodos
 func (f *EnhancedFlowTool) updateEdgePositions() {
 	for _, edge := range f.Canvas.Edges {
 		if fromBox, ok := f.Canvas.Boxes[edge.FromBox]; ok {
 			if toBox, ok := f.Canvas.Boxes[edge.ToBox]; ok {
+				// Punto de salida: lado derecho del nodo origen
 				edge.FromX = fromBox.X + fromBox.Width
 				edge.FromY = fromBox.Y + fromBox.Height/2
+				// Punto de entrada: lado izquierdo del nodo destino
 				edge.ToX = toBox.X
 				edge.ToY = toBox.Y + toBox.Height/2
 			}
@@ -2082,32 +2319,42 @@ func (f *EnhancedFlowTool) updateEdgePositions() {
 	}
 }
 
+// === Métodos de control del canvas ===
+
+// HandleCanvasZoomIn aumenta el zoom del canvas en 20%
+// Límite máximo: 300%
 func (f *EnhancedFlowTool) HandleCanvasZoomIn(data interface{}) {
-	f.Canvas.Zoom = min(f.Canvas.Zoom*1.2, 3.0)
+	f.Canvas.Zoom = min(f.Canvas.Zoom*1.2, 3.0) // Aumentar 20%, máximo 300%
 	f.LastAction = fmt.Sprintf("Zoom: %d%%", f.Canvas.ZoomPercent())
 	if f.ComponentDriver != nil {
 		f.Commit()
 	}
 }
 
+// HandleCanvasZoomOut reduce el zoom del canvas en 20%
+// Límite mínimo: 30%
 func (f *EnhancedFlowTool) HandleCanvasZoomOut(data interface{}) {
-	f.Canvas.Zoom = max(f.Canvas.Zoom/1.2, 0.3)
+	f.Canvas.Zoom = max(f.Canvas.Zoom/1.2, 0.3) // Reducir 20%, mínimo 30%
 	f.LastAction = fmt.Sprintf("Zoom: %d%%", f.Canvas.ZoomPercent())
 	if f.ComponentDriver != nil {
 		f.Commit()
 	}
 }
 
+// HandleCanvasReset restaura el canvas a su vista inicial
+// Zoom: 100%, Pan: (0,0)
 func (f *EnhancedFlowTool) HandleCanvasReset(data interface{}) {
-	f.Canvas.Zoom = 1.0
-	f.Canvas.PanX = 0
-	f.Canvas.PanY = 0
+	f.Canvas.Zoom = 1.0  // Zoom al 100%
+	f.Canvas.PanX = 0    // Sin desplazamiento horizontal
+	f.Canvas.PanY = 0    // Sin desplazamiento vertical
 	f.LastAction = "View reset"
 	if f.ComponentDriver != nil {
 		f.Commit()
 	}
 }
 
+// HandleToggleGrid activa/desactiva la cuadrícula del canvas
+// Útil para alinear nodos visualmente
 func (f *EnhancedFlowTool) HandleToggleGrid(data interface{}) {
 	f.Canvas.ShowGrid = !f.Canvas.ShowGrid
 	f.LastAction = fmt.Sprintf("Grid: %v", f.Canvas.ShowGrid)
@@ -2116,6 +2363,9 @@ func (f *EnhancedFlowTool) HandleToggleGrid(data interface{}) {
 	}
 }
 
+// === Funciones de utilidad ===
+
+// min retorna el menor de dos números flotantes
 func min(a, b float64) float64 {
 	if a < b {
 		return a
@@ -2123,6 +2373,7 @@ func min(a, b float64) float64 {
 	return b
 }
 
+// max retorna el mayor de dos números flotantes
 func max(a, b float64) float64 {
 	if a > b {
 		return a
