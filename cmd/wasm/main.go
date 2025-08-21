@@ -90,9 +90,13 @@ func connect() {
 		var dataEventIn DataEventIn
 		json.Unmarshal([]byte(evtData), &dataEventIn)
 		
-		// Debug logging for non-fill messages
-		if isVerbose && dataEventIn.Type != "fill" {
-			fmt.Printf("[WASM] Received message type: %s, ID: %s\n", dataEventIn.Type, dataEventIn.ID)
+		// Debug logging for all messages in verbose mode
+		if isVerbose {
+			if dataEventIn.Type == "fill" {
+				fmt.Printf("[WASM] FILL message - ID: %s, Value length: %d\n", dataEventIn.ID, len(fmt.Sprint(dataEventIn.Value)))
+			} else {
+				fmt.Printf("[WASM] Received message type: %s, ID: %s, Value: %v\n", dataEventIn.Type, dataEventIn.ID, dataEventIn.Value)
+			}
 		}
 		
 		// Scripts don't need an element ID
@@ -276,57 +280,153 @@ func sendEvent(id string, event string, data string) {
 }
 
 func initDragAndDrop() {
-	// Create drag state object
+	// Create drag state object for generic drag and drop
 	dragState := map[string]interface{}{
-		"isDragging": false,
-		"draggedBox": "",
-		"startX":     0,
-		"startY":     0,
-		"initX":      0,
-		"initY":      0,
-		"lastUpdate": 0,
+		"isDragging":     false,
+		"draggedElement": "",
+		"startX":         0,
+		"startY":         0,
+		"initX":          0,
+		"initY":          0,
+		"lastUpdate":     0,
+		"componentId":    "", // The component that owns the draggable element
 	}
 	
 	// Set global drag state
 	js.Global().Set("dragState", dragState)
 	
-	// Mousedown handler
+	// Mousedown handler - generic for any draggable element
 	mouseDownHandler := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		e := args[0]
 		target := e.Get("target")
 		
-		// Walk up the DOM tree to find a draggable box
+		if isVerbose {
+			fmt.Printf("[WASM] Mouse down on element: %s, classes: %s\n", target.Get("tagName").String(), target.Get("className").String())
+		}
+		
+		// Walk up the DOM tree to find a draggable element
 		for !target.IsNull() && !target.Equal(document.Get("body")) {
 			classList := target.Get("classList")
-			if !classList.IsUndefined() && classList.Call("contains", "draggable-box").Bool() {
+			
+			// Skip elements with pointer-events: none
+			style := window.Call("getComputedStyle", target)
+			pointerEvents := style.Get("pointerEvents").String()
+			if pointerEvents == "none" {
+				if isVerbose {
+					fmt.Printf("[WASM] Skipping element with pointer-events:none: %s\n", target.Get("tagName").String())
+				}
+				target = target.Get("parentElement")
+				continue
+			}
+			
+			if isVerbose {
+				fmt.Printf("[WASM] Checking element: %s, classes: %s, id: %s\n", target.Get("tagName").String(), target.Get("className").String(), target.Get("id").String())
+			}
+			if !classList.IsUndefined() && (classList.Call("contains", "draggable").Bool() || classList.Call("contains", "draggable-box").Bool()) {
+				if isVerbose {
+					fmt.Printf("[WASM] Found draggable element: %s\n", target.Get("id").String())
+				}
+				// Check if dragging is disabled on this element
+				if target.Call("hasAttribute", "data-drag-disabled").Bool() {
+					return nil
+				}
+				
 				e.Call("preventDefault")
 				e.Call("stopPropagation")
 				
-				// Get box info
-				boxId := target.Call("getAttribute", "data-box-id").String()
-				boxX, _ := strconv.Atoi(target.Call("getAttribute", "data-box-x").String())
-				boxY, _ := strconv.Atoi(target.Call("getAttribute", "data-box-y").String())
+				// Get element info from data attributes (try both new and old format)
+				elementId := target.Call("getAttribute", "data-element-id")
+				if elementId.IsNull() {
+					// Try old format
+					boxId := target.Call("getAttribute", "data-box-id")
+					if !boxId.IsNull() {
+						elementId = js.ValueOf("box-" + boxId.String())
+					} else {
+						elementId = target.Get("id")
+					}
+				}
+				
+				// Get component ID from data attribute or parent
+				componentId := target.Call("getAttribute", "data-component-id")
+				if componentId.IsNull() {
+					// For old format, default to flow-tool
+					if !target.Call("getAttribute", "data-box-id").IsNull() {
+						componentId = js.ValueOf("flow-tool")
+					} else {
+						// Try to find component ID from parent elements
+						parent := target.Get("parentElement")
+						for !parent.IsNull() && !parent.Equal(document.Get("body")) {
+							compId := parent.Call("getAttribute", "data-component-id")
+							if !compId.IsNull() {
+								componentId = compId
+								break
+							}
+							parent = parent.Get("parentElement")
+						}
+					}
+				}
+				
+				// Get initial position (try data attributes first, then computed style)
+				initX := 0
+				initY := 0
+				
+				// Try old format data attributes first
+				boxX := target.Call("getAttribute", "data-box-x")
+				boxY := target.Call("getAttribute", "data-box-y")
+				if !boxX.IsNull() && !boxY.IsNull() {
+					initX, _ = strconv.Atoi(boxX.String())
+					initY, _ = strconv.Atoi(boxY.String())
+				} else {
+					// Fall back to computed style
+					style := window.Call("getComputedStyle", target)
+					leftStr := style.Get("left").String()
+					topStr := style.Get("top").String()
+					
+					if leftStr != "auto" && leftStr != "" {
+						initX, _ = strconv.Atoi(strings.TrimSuffix(leftStr, "px"))
+					}
+					if topStr != "auto" && topStr != "" {
+						initY, _ = strconv.Atoi(strings.TrimSuffix(topStr, "px"))
+					}
+				}
 				
 				// Update drag state
 				state := js.Global().Get("dragState")
 				state.Set("isDragging", true)
-				state.Set("draggedBox", boxId)
+				state.Set("draggedElement", elementId.String())
+				state.Set("componentId", componentId.String())
 				state.Set("startX", e.Get("clientX").Int())
 				state.Set("startY", e.Get("clientY").Int())
-				state.Set("initX", boxX)
-				state.Set("initY", boxY)
+				state.Set("initX", initX)
+				state.Set("initY", initY)
 				
-				// Send start drag event
-				dragData := map[string]interface{}{
-					"id": boxId,
-					"x":  e.Get("clientX").Int(),
-					"y":  e.Get("clientY").Int(),
+				// Send specific or generic drag start event based on element type
+				if !componentId.IsNull() && componentId.String() != "" {
+					dragData := map[string]interface{}{
+						"element": elementId.String(),
+						"x":       e.Get("clientX").Int(),
+						"y":       e.Get("clientY").Int(),
+					}
+					
+					// Check if this is a flow-tool box for backward compatibility
+					if strings.HasPrefix(elementId.String(), "box-") && componentId.String() == "flow-tool" {
+						// Send both old-style BoxStartDrag and new generic DragStart
+						boxData := map[string]interface{}{
+							"id": strings.TrimPrefix(elementId.String(), "box-"),
+							"x":  e.Get("clientX").Int(),
+							"y":  e.Get("clientY").Int(),
+						}
+						boxDataJSON, _ := json.Marshal(boxData)
+						sendEvent(componentId.String(), "BoxStartDrag", string(boxDataJSON))
+					}
+					
+					// Always send generic event too
+					dragDataJSON, _ := json.Marshal(dragData)
+					sendEvent(componentId.String(), "DragStart", string(dragDataJSON))
 				}
-				dragDataJSON, _ := json.Marshal(dragData)
-				sendEvent("flow-tool", "BoxStartDrag", string(dragDataJSON))
 				
 				if isVerbose {
-					fmt.Printf("[WASM] Started dragging: %s\n", boxId)
+					fmt.Printf("[WASM] Started dragging: %s\n", elementId.String())
 				}
 				
 				return false
@@ -336,7 +436,7 @@ func initDragAndDrop() {
 		return nil
 	})
 	
-	// Mousemove handler
+	// Mousemove handler - generic
 	mouseMoveHandler := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		e := args[0]
 		state := js.Global().Get("dragState")
@@ -344,7 +444,8 @@ func initDragAndDrop() {
 		if state.Get("isDragging").Bool() {
 			e.Call("preventDefault")
 			
-			draggedBox := state.Get("draggedBox").String()
+			draggedElement := state.Get("draggedElement").String()
+			componentId := state.Get("componentId").String()
 			startX := state.Get("startX").Int()
 			startY := state.Get("startY").Int()
 			initX := state.Get("initX").Int()
@@ -356,37 +457,54 @@ func initDragAndDrop() {
 			newY := initY + deltaY
 			
 			// Update visual position immediately
-			boxEl := document.Call("getElementById", "box-"+draggedBox)
-			if !boxEl.IsNull() {
-				style := boxEl.Get("style")
+			element := document.Call("getElementById", draggedElement)
+			if !element.IsNull() {
+				style := element.Get("style")
 				style.Set("left", fmt.Sprintf("%dpx", newX))
 				style.Set("top", fmt.Sprintf("%dpx", newY))
-				boxEl.Call("setAttribute", "data-box-x", newX)
-				boxEl.Call("setAttribute", "data-box-y", newY)
+				
+				// Update data attributes if they exist (for old format compatibility)
+				if !element.Call("getAttribute", "data-box-x").IsNull() {
+					element.Call("setAttribute", "data-box-x", newX)
+					element.Call("setAttribute", "data-box-y", newY)
+				}
 			}
 			
 			// Throttle server updates
 			now := js.Global().Get("Date").Call("now").Float()
 			lastUpdate := state.Get("lastUpdate").Float()
-			if now-lastUpdate > 50 {
+			if now-lastUpdate > 50 && componentId != "" {
+				// Check if this is a flow-tool box for backward compatibility
+				if strings.HasPrefix(draggedElement, "box-") && componentId == "flow-tool" {
+					// Send old-style BoxDrag event
+					boxData := map[string]interface{}{
+						"id": strings.TrimPrefix(draggedElement, "box-"),
+						"x":  newX,
+						"y":  newY,
+					}
+					boxDataJSON, _ := json.Marshal(boxData)
+					sendEvent(componentId, "BoxDrag", string(boxDataJSON))
+				}
+				
+				// Always send generic event too
 				moveData := map[string]interface{}{
-					"id": draggedBox,
-					"x":  newX,
-					"y":  newY,
+					"element": draggedElement,
+					"x":       newX,
+					"y":       newY,
 				}
 				moveDataJSON, _ := json.Marshal(moveData)
-				sendEvent("flow-tool", "BoxDrag", string(moveDataJSON))
+				sendEvent(componentId, "DragMove", string(moveDataJSON))
 				state.Set("lastUpdate", now)
 				
 				if isVerbose {
-					fmt.Printf("[WASM] Dragging %s to (%d, %d)\n", draggedBox, newX, newY)
+					fmt.Printf("[WASM] Dragging %s to (%d, %d)\n", draggedElement, newX, newY)
 				}
 			}
 		}
 		return nil
 	})
 	
-	// Mouseup handler
+	// Mouseup handler - generic
 	mouseUpHandler := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		e := args[0]
 		state := js.Global().Get("dragState")
@@ -394,35 +512,46 @@ func initDragAndDrop() {
 		if state.Get("isDragging").Bool() {
 			e.Call("preventDefault")
 			
-			draggedBox := state.Get("draggedBox").String()
+			draggedElement := state.Get("draggedElement").String()
+			componentId := state.Get("componentId").String()
 			
 			// Get final position
-			boxEl := document.Call("getElementById", "box-"+draggedBox)
-			if !boxEl.IsNull() {
-				style := boxEl.Get("style")
+			element := document.Call("getElementById", draggedElement)
+			if !element.IsNull() && componentId != "" {
+				style := element.Get("style")
 				finalX, _ := strconv.Atoi(strings.TrimSuffix(style.Get("left").String(), "px"))
 				finalY, _ := strconv.Atoi(strings.TrimSuffix(style.Get("top").String(), "px"))
 				
-				// Send final position
+				// Check if this is a flow-tool box for backward compatibility
+				if strings.HasPrefix(draggedElement, "box-") && componentId == "flow-tool" {
+					// Send old-style BoxEndDrag event
+					boxData := map[string]interface{}{
+						"id": strings.TrimPrefix(draggedElement, "box-"),
+						"x":  finalX,
+						"y":  finalY,
+					}
+					boxDataJSON, _ := json.Marshal(boxData)
+					sendEvent(componentId, "BoxEndDrag", string(boxDataJSON))
+				}
+				
+				// Always send generic event too
 				finalData := map[string]interface{}{
-					"id": draggedBox,
-					"x":  finalX,
-					"y":  finalY,
+					"element": draggedElement,
+					"x":       finalX,
+					"y":       finalY,
 				}
 				finalDataJSON, _ := json.Marshal(finalData)
-				sendEvent("flow-tool", "BoxDrag", string(finalDataJSON))
+				sendEvent(componentId, "DragEnd", string(finalDataJSON))
 			}
 			
-			// Send end drag event
-			sendEvent("flow-tool", "BoxEndDrag", draggedBox)
-			
 			if isVerbose {
-				fmt.Printf("[WASM] Ended dragging: %s\n", draggedBox)
+				fmt.Printf("[WASM] Ended dragging: %s\n", draggedElement)
 			}
 			
 			// Reset drag state
 			state.Set("isDragging", false)
-			state.Set("draggedBox", "")
+			state.Set("draggedElement", "")
+			state.Set("componentId", "")
 		}
 		return nil
 	})
