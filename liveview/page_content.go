@@ -146,7 +146,7 @@ func (pc *PageControl) Register(fx func() LiveDriver) {
 		ws.SetReadLimit(MaxMessageSize)
 		
 		// Crear rate limiter para este cliente
-		rateLimiter := NewRateLimiter(100, 60) // 100 mensajes por minuto
+		rateLimiter := NewRateLimiter(1000, 1) // 1000 mensajes por segundo - más permisivo para desarrollo
 		clientID := c.RealIP()
 
 		drivers := make(map[string]LiveDriver)
