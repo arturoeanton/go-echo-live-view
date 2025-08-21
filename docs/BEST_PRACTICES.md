@@ -16,9 +16,10 @@
 5. [Testing Strategies](#testing-strategies)
 6. [Error Handling](#error-handling)
 7. [Code Organization](#code-organization)
-8. [Production Deployment](#production-deployment)
-9. [Monitoring and Debugging](#monitoring-and-debugging)
-10. [Common Pitfalls](#common-pitfalls)
+8. [Drag and Drop Implementation](#drag-and-drop-implementation)
+9. [Production Deployment](#production-deployment)
+10. [Monitoring and Debugging](#monitoring-and-debugging)
+11. [Common Pitfalls](#common-pitfalls)
 
 ## Component Design
 
@@ -616,6 +617,81 @@ func (c *Component) DeleteItem(data interface{}) {}
 <button id="submit-button">
 ```
 
+## Drag and Drop Implementation
+
+### Z-Index Layering
+
+Proper z-index management is critical for drag and drop functionality:
+
+```css
+/* Ensure draggable elements are above other UI elements */
+.draggable-box {
+    z-index: 20;  /* Higher than SVG overlays */
+    position: absolute;
+    cursor: move;
+}
+
+/* SVG elements should be below draggable items */
+.svg-edges, .svg-connections {
+    z-index: 5-15;  /* Below draggable elements */
+    pointer-events: none;  /* For decorative SVG */
+}
+
+/* Active drag state */
+.dragging {
+    z-index: 100;  /* Highest during drag */
+    opacity: 0.8;
+}
+```
+
+### Event Handling Best Practices
+
+```go
+func (c *MyComponent) HandleDragStart(data interface{}) {
+    // Parse drag data safely
+    dragData := parseDragData(data)
+    if dragData == nil {
+        return
+    }
+    
+    // Store initial state for undo
+    c.saveStateForUndo()
+    
+    // Update UI immediately for responsiveness
+    c.DraggingItem = dragData.ElementID
+    c.Commit()
+}
+
+func (c *MyComponent) HandleDragEnd(data interface{}) {
+    // Validate final position
+    if !c.isValidPosition(data) {
+        c.restoreLastState()
+        return
+    }
+    
+    // Save final state
+    c.DraggingItem = ""
+    c.saveState()
+    c.Commit()
+}
+```
+
+### Performance Considerations
+
+```go
+// Throttle drag move events
+func (c *MyComponent) HandleDragMove(data interface{}) {
+    now := time.Now()
+    if now.Sub(c.lastDragUpdate) < 50*time.Millisecond {
+        return  // Skip update if too frequent
+    }
+    
+    c.lastDragUpdate = now
+    c.updatePosition(data)
+    c.Commit()
+}
+```
+
 ## Production Deployment
 
 ### Configuration Management
@@ -900,9 +976,10 @@ func (c *Component) UpdateItems(items []Item) {
 5. [Estrategias de Testing](#estrategias-de-testing)
 6. [Manejo de Errores](#manejo-de-errores)
 7. [Organización del Código](#organización-del-código)
-8. [Despliegue en Producción](#despliegue-en-producción)
-9. [Monitoreo y Depuración](#monitoreo-y-depuración)
-10. [Errores Comunes](#errores-comunes)
+8. [Implementación de Arrastrar y Soltar](#implementación-de-arrastrar-y-soltar)
+9. [Despliegue en Producción](#despliegue-en-producción)
+10. [Monitoreo y Depuración](#monitoreo-y-depuración)
+11. [Errores Comunes](#errores-comunes)
 
 ## Diseño de Componentes
 
@@ -1289,6 +1366,81 @@ proyecto/
 │   ├── integracion/
 │   └── unitarias/
 └── go.mod
+```
+
+## Implementación de Arrastrar y Soltar
+
+### Gestión de Capas Z-Index
+
+La gestión adecuada del z-index es crítica para la funcionalidad de arrastrar y soltar:
+
+```css
+/* Asegurar que los elementos arrastrables estén sobre otros elementos UI */
+.draggable-box {
+    z-index: 20;  /* Mayor que las superposiciones SVG */
+    position: absolute;
+    cursor: move;
+}
+
+/* Los elementos SVG deben estar debajo de los elementos arrastrables */
+.svg-edges, .svg-connections {
+    z-index: 5-15;  /* Debajo de elementos arrastrables */
+    pointer-events: none;  /* Para SVG decorativo */
+}
+
+/* Estado activo de arrastre */
+.dragging {
+    z-index: 100;  /* El más alto durante el arrastre */
+    opacity: 0.8;
+}
+```
+
+### Mejores Prácticas para el Manejo de Eventos
+
+```go
+func (c *MiComponente) HandleDragStart(data interface{}) {
+    // Parsear datos de arrastre de forma segura
+    dragData := parseDragData(data)
+    if dragData == nil {
+        return
+    }
+    
+    // Guardar estado inicial para deshacer
+    c.guardarEstadoParaDeshacer()
+    
+    // Actualizar UI inmediatamente para capacidad de respuesta
+    c.ElementoArrastrando = dragData.ElementID
+    c.Commit()
+}
+
+func (c *MiComponente) HandleDragEnd(data interface{}) {
+    // Validar posición final
+    if !c.esPosicionValida(data) {
+        c.restaurarUltimoEstado()
+        return
+    }
+    
+    // Guardar estado final
+    c.ElementoArrastrando = ""
+    c.guardarEstado()
+    c.Commit()
+}
+```
+
+### Consideraciones de Rendimiento
+
+```go
+// Limitar eventos de movimiento de arrastre
+func (c *MiComponente) HandleDragMove(data interface{}) {
+    ahora := time.Now()
+    if ahora.Sub(c.ultimaActualizacionArrastre) < 50*time.Millisecond {
+        return  // Omitir actualización si es muy frecuente
+    }
+    
+    c.ultimaActualizacionArrastre = ahora
+    c.actualizarPosicion(data)
+    c.Commit()
+}
 ```
 
 ## Despliegue en Producción

@@ -21,8 +21,10 @@ Go Echo LiveView is a real-time web framework for Go that enables server-side re
 7. [WebSocket Communication](#websocket-communication)
 8. [Component Lifecycle](#component-lifecycle)
 9. [Built-in Components](#built-in-components)
-10. [Security Features](#security-features)
-11. [Best Practices](#best-practices)
+10. [Enhanced Flow Tool](#enhanced-flow-tool)
+11. [Drag and Drop Support](#drag-and-drop-support)
+12. [Security Features](#security-features)
+13. [Best Practices](#best-practices)
 
 ## Core Concepts
 
@@ -48,6 +50,15 @@ Components automatically sync with the client via WebSocket, eliminating the nee
 
 ```bash
 go get github.com/arturoeanton/go-echo-live-view
+```
+
+### Building WASM Module
+
+The framework includes a WASM module for enhanced client-side functionality:
+
+```bash
+cd cmd/wasm/
+GOOS=js GOARCH=wasm go build -o ../../assets/json.wasm
 ```
 
 ### Basic Example
@@ -401,6 +412,73 @@ modal := &components.Modal{
 }
 ```
 
+## Enhanced Flow Tool
+
+The framework includes an enhanced flow tool for creating interactive node-based diagrams with drag-and-drop support.
+
+### Features
+
+- **Interactive Canvas**: Pan, zoom, and navigate flow diagrams
+- **Drag & Drop**: Move boxes around the canvas with real-time updates
+- **Connection Mode**: Create edges between boxes
+- **Auto-arrange**: Automatically organize diagram layout
+- **Import/Export**: Save and load diagrams as JSON
+- **Undo/Redo**: Full history support for all operations
+- **Delete Operations**: Remove boxes and edges with visual feedback
+
+### Usage Example
+
+```go
+import "github.com/arturoeanton/go-echo-live-view/example/example_flowtool_enhanced"
+
+tool := NewEnhancedFlowTool()
+// Component is ready to use with full drag & drop support
+```
+
+## Drag and Drop Support
+
+The framework provides built-in drag and drop functionality through its WASM module.
+
+### Generic Drag & Drop
+
+Any element can be made draggable by adding the appropriate classes and data attributes:
+
+```html
+<div class="draggable" 
+     data-element-id="my-element"
+     data-component-id="my-component">
+    Draggable content
+</div>
+```
+
+### Event Handling
+
+The WASM module sends these events during drag operations:
+
+- `DragStart`: Fired when dragging begins
+- `DragMove`: Fired during drag movement (throttled)
+- `DragEnd`: Fired when dragging completes
+
+```go
+func (c *MyComponent) HandleDragStart(data interface{}) {
+    // data contains: {element: "element-id", x: 100, y: 200}
+}
+```
+
+### Z-Index Management
+
+To ensure draggable elements receive mouse events properly, set appropriate z-index values:
+
+```css
+.draggable-box {
+    z-index: 20; /* Above SVG elements */
+}
+
+.svg-edges {
+    z-index: 5-15; /* Below draggable elements */
+}
+```
+
 ## Security Features
 
 ### Input Validation
@@ -529,8 +607,10 @@ Go Echo LiveView es un framework web en tiempo real para Go que permite renderiz
 7. [Comunicación WebSocket](#comunicación-websocket)
 8. [Ciclo de Vida del Componente](#ciclo-de-vida-del-componente)
 9. [Componentes Integrados](#componentes-integrados)
-10. [Características de Seguridad](#características-de-seguridad)
-11. [Mejores Prácticas](#mejores-prácticas)
+10. [Herramienta de Flujo Mejorada](#herramienta-de-flujo-mejorada)
+11. [Soporte de Arrastrar y Soltar](#soporte-de-arrastrar-y-soltar)
+12. [Características de Seguridad](#características-de-seguridad)
+13. [Mejores Prácticas](#mejores-prácticas)
 
 ## Conceptos Fundamentales
 
@@ -556,6 +636,15 @@ Los componentes se sincronizan automáticamente con el cliente vía WebSocket, e
 
 ```bash
 go get github.com/arturoeanton/go-echo-live-view
+```
+
+### Compilar Módulo WASM
+
+El framework incluye un módulo WASM para funcionalidad mejorada del lado del cliente:
+
+```bash
+cd cmd/wasm/
+GOOS=js GOARCH=wasm go build -o ../../assets/json.wasm
 ```
 
 ### Ejemplo Básico
@@ -906,6 +995,73 @@ modal := &components.Modal{
     OnCancel: func() {
         // Manejar Cancelar
     },
+}
+```
+
+## Herramienta de Flujo Mejorada
+
+El framework incluye una herramienta de flujo mejorada para crear diagramas interactivos basados en nodos con soporte de arrastrar y soltar.
+
+### Características
+
+- **Canvas Interactivo**: Desplazar, hacer zoom y navegar diagramas de flujo
+- **Arrastrar y Soltar**: Mover cajas por el canvas con actualizaciones en tiempo real
+- **Modo de Conexión**: Crear enlaces entre cajas
+- **Auto-organizar**: Organizar automáticamente el diseño del diagrama
+- **Importar/Exportar**: Guardar y cargar diagramas como JSON
+- **Deshacer/Rehacer**: Soporte completo de historial para todas las operaciones
+- **Operaciones de Eliminación**: Eliminar cajas y enlaces con retroalimentación visual
+
+### Ejemplo de Uso
+
+```go
+import "github.com/arturoeanton/go-echo-live-view/example/example_flowtool_enhanced"
+
+tool := NewEnhancedFlowTool()
+// El componente está listo para usar con soporte completo de arrastrar y soltar
+```
+
+## Soporte de Arrastrar y Soltar
+
+El framework proporciona funcionalidad integrada de arrastrar y soltar a través de su módulo WASM.
+
+### Arrastrar y Soltar Genérico
+
+Cualquier elemento puede hacerse arrastrable agregando las clases y atributos de datos apropiados:
+
+```html
+<div class="draggable" 
+     data-element-id="mi-elemento"
+     data-component-id="mi-componente">
+    Contenido arrastrable
+</div>
+```
+
+### Manejo de Eventos
+
+El módulo WASM envía estos eventos durante las operaciones de arrastre:
+
+- `DragStart`: Se dispara cuando comienza el arrastre
+- `DragMove`: Se dispara durante el movimiento de arrastre (limitado)
+- `DragEnd`: Se dispara cuando se completa el arrastre
+
+```go
+func (c *MiComponente) HandleDragStart(data interface{}) {
+    // data contiene: {element: "id-elemento", x: 100, y: 200}
+}
+```
+
+### Gestión de Z-Index
+
+Para asegurar que los elementos arrastrables reciban eventos del mouse correctamente, establezca valores apropiados de z-index:
+
+```css
+.draggable-box {
+    z-index: 20; /* Por encima de elementos SVG */
+}
+
+.svg-edges {
+    z-index: 5-15; /* Por debajo de elementos arrastrables */
 }
 ```
 
