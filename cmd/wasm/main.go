@@ -552,10 +552,10 @@ func initDragAndDrop() {
 				}
 			}
 			
-			// Throttle server updates
+			// Throttle server updates - reduced to 16ms for smoother updates (60 FPS)
 			now := js.Global().Get("Date").Call("now").Float()
 			lastUpdate := state.Get("lastUpdate").Float()
-			if now-lastUpdate > 50 && componentId != "" {
+			if now-lastUpdate > 16 && componentId != "" {
 				// Check if this is a flow-tool box for backward compatibility
 				if strings.HasPrefix(draggedElement, "box-") && componentId == "flow-tool" {
 					// Send old-style BoxDrag event
