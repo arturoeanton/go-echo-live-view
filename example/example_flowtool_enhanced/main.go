@@ -20,6 +20,7 @@ type EnhancedFlowTool struct {
 	
 	Canvas         *components.FlowCanvas
 	Modal          *components.Modal
+	FileUpload     *components.FileUpload
 	Title          string
 	Description    string
 	NodeCount      int
@@ -29,6 +30,13 @@ type EnhancedFlowTool struct {
 	ConnectingFrom string
 	DraggingBox    string
 	JsonExport     string
+	
+	// Edit mode fields
+	EditingMode    bool
+	EditingType    string // "box" or "edge"
+	EditingID      string
+	EditingValue   string
+	EditingCode    string  // Code metadata for boxes
 	
 	// New features
 	StateManager   *liveview.StateManager
@@ -158,9 +166,19 @@ func NewEnhancedFlowTool() *EnhancedFlowTool {
 		log.Printf("[Auto-save] Box %s moved to (%d, %d)", boxID, x, y)
 	}
 	
+	// Create file upload component for JSON import
+	fileUpload := &components.FileUpload{
+		Label:    "Import JSON Diagram",
+		Accept:   ".json",
+		Multiple: false,
+		MaxSize:  5 * 1024 * 1024, // 5MB max
+		MaxFiles: 1,
+	}
+	
 	tool := &EnhancedFlowTool{
 		Canvas:         canvas,
 		Modal:          modal,
+		FileUpload:     fileUpload,
 		Title:          "Enhanced Flow Diagram Tool",
 		Description:    "Powered by Virtual DOM, State Management, and Event Registry",
 		NodeCount:      0,
@@ -184,6 +202,22 @@ func NewEnhancedFlowTool() *EnhancedFlowTool {
 	canvas.AddBox(endBox1)
 	
 	tool.NodeCount = 3
+	
+	// Configure file upload callback
+	fileUpload.OnUpload = func(files []components.FileInfo) error {
+		if len(files) > 0 {
+			// Get the raw file data (base64 decoded)
+			fileData, err := fileUpload.GetFileData(0)
+			if err != nil {
+				return err
+			}
+			// Import the diagram using the decoded JSON content
+			tool.ImportDiagram(string(fileData))
+			// Clear the file upload after successful import
+			fileUpload.Clear()
+		}
+		return nil
+	}
 	
 	// Register event handlers with throttling and debouncing
 	tool.setupEnhancedEventHandlers()
@@ -442,6 +476,11 @@ func (f *EnhancedFlowTool) Start() {
 		f.Modal.Start()
 	}
 	
+	// Initialize file upload component
+	if f.FileUpload != nil && f.FileUpload.ComponentDriver != nil {
+		f.FileUpload.Start()
+	}
+	
 	// Register all event handlers
 	if f.ComponentDriver != nil {
 		// Enhanced event handlers
@@ -459,9 +498,6 @@ func (f *EnhancedFlowTool) Start() {
 		}
 		f.ComponentDriver.Events["ImportDiagram"] = func(c *EnhancedFlowTool, data interface{}) {
 			c.ImportDiagram(data)
-		}
-		f.ComponentDriver.Events["AnimateFlow"] = func(c *EnhancedFlowTool, data interface{}) {
-			c.AnimateFlow(data)
 		}
 		f.ComponentDriver.Events["Undo"] = func(c *EnhancedFlowTool, data interface{}) {
 			c.Undo(data)
@@ -531,6 +567,20 @@ func (f *EnhancedFlowTool) Start() {
 		}
 		f.ComponentDriver.Events["BoxEndDrag"] = func(c *EnhancedFlowTool, data interface{}) {
 			c.HandleBoxEndDrag(data)
+		}
+		
+		// Edit events
+		f.ComponentDriver.Events["EditBox"] = func(c *EnhancedFlowTool, data interface{}) {
+			c.HandleEditBox(data)
+		}
+		f.ComponentDriver.Events["EditEdge"] = func(c *EnhancedFlowTool, data interface{}) {
+			c.HandleEditEdge(data)
+		}
+		f.ComponentDriver.Events["SaveEdit"] = func(c *EnhancedFlowTool, data interface{}) {
+			c.HandleSaveEdit(data)
+		}
+		f.ComponentDriver.Events["CancelEdit"] = func(c *EnhancedFlowTool, data interface{}) {
+			c.HandleCancelEdit(data)
 		}
 	}
 	
@@ -873,10 +923,6 @@ func (f *EnhancedFlowTool) GetTemplate() string {
 					<button class="btn btn-warning" onclick="send_event('{{.IdComponent}}', 'AutoArrange', null)">
 						Auto Arrange
 					</button>
-					
-					<button class="btn btn-success" onclick="send_event('{{.IdComponent}}', 'AnimateFlow', null)">
-						Animate Flow
-					</button>
 				</div>
 				
 				<div class="control-group">
@@ -884,10 +930,17 @@ func (f *EnhancedFlowTool) GetTemplate() string {
 						📥 Export JSON
 					</button>
 					
-					<label class="btn btn-secondary" style="margin: 0;">
+					<button class="btn btn-secondary" onclick="document.getElementById('import-file-input').click()">
 						📤 Import JSON
-						<input type="file" accept=".json" style="display: none;" onchange="handleFileImport(event)">
-					</label>
+					</button>
+					<input id="import-file-input" type="file" accept=".json" style="display: none;" 
+						onchange="if(this.files[0]) { 
+							var reader = new FileReader(); 
+							reader.onload = function(e) { 
+								send_event('{{.IdComponent}}', 'ImportDiagram', e.target.result); 
+							}; 
+							reader.readAsText(this.files[0]); 
+						}">
 					
 					<button class="btn btn-danger" onclick="send_event('{{.IdComponent}}', 'ClearDiagram', null)">
 						🗑️ Clear All
@@ -942,7 +995,8 @@ func (f *EnhancedFlowTool) GetTemplate() string {
 								     data-box-y="{{$box.Y}}"
 								     {{if $component.ConnectingMode}}data-drag-disabled="true"{{end}}
 								     style="position: absolute; left: {{$box.X}}px; top: {{$box.Y}}px; width: {{$box.Width}}px; height: {{$box.Height}}px; background: {{$box.Color}}; border: 2px solid {{if $box.Selected}}#2563eb{{else}}#cbd5e1{{end}}; border-radius: 8px; padding: 0.5rem; cursor: {{if $component.ConnectingMode}}pointer{{else}}move{{end}}; box-shadow: 0 2px 4px rgba(0,0,0,0.1); user-select: none; z-index: 20;"
-								     onclick="if({{$component.ConnectingMode}}) { send_event('{{$component.IdComponent}}', 'BoxClick', '{{$id}}'); }">
+								     onclick="if({{$component.ConnectingMode}}) { send_event('{{$component.IdComponent}}', 'BoxClick', '{{$id}}'); }"
+								     ondblclick="send_event('{{$component.IdComponent}}', 'EditBox', '{{$id}}'); event.stopPropagation();">
 									<button class="delete-box-btn" 
 									        onclick="event.stopPropagation(); if(confirm('Delete this box?')) { send_event('{{$component.IdComponent}}', 'DeleteBox', '{{$id}}'); }"
 									        style="position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; border-radius: 50%; background: #ef4444; color: white; border: 2px solid white; cursor: pointer; font-size: 12px; line-height: 1; padding: 0; display: {{if $box.Selected}}block{{else}}none{{end}}; z-index: 10;">
@@ -963,7 +1017,8 @@ func (f *EnhancedFlowTool) GetTemplate() string {
 										      stroke="{{if $edge.Selected}}#2563eb{{else}}#6b7280{{end}}" 
 										      stroke-width="{{if $edge.Selected}}3{{else}}2{{end}}"
 										      style="cursor: pointer;"
-										      onclick="send_event('{{$.IdComponent}}', 'SelectEdge', '{{$id}}')" />
+										      onclick="send_event('{{$.IdComponent}}', 'SelectEdge', '{{$id}}')"
+										      ondblclick="send_event('{{$.IdComponent}}', 'EditEdge', '{{$id}}'); event.stopPropagation();" />
 										{{if $edge.Label}}
 											<text x="{{$edge.GetMidX}}" y="{{$edge.GetMidY}}" text-anchor="middle" fill="#374151" font-size="12">{{$edge.Label}}</text>
 										{{end}}
@@ -1034,6 +1089,81 @@ func (f *EnhancedFlowTool) GetTemplate() string {
 		
 		<!-- Modal Component -->
 		{{mount "export-modal"}}
+		
+		<!-- Edit Modal -->
+		{{if .EditingMode}}
+		<div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 2000; overflow-y: auto;">
+			<div style="background: white; padding: 2rem; border-radius: 8px; min-width: 600px; max-width: 800px; max-height: 90vh; overflow-y: auto; box-shadow: 0 10px 30px rgba(0,0,0,0.2); margin: 2rem;">
+				<h3 style="margin-top: 0; color: #333;">
+					{{if eq .EditingType "box"}}Edit Node{{else}}Edit Edge Label{{end}}
+				</h3>
+				
+				<label style="display: block; margin-bottom: 0.5rem; color: #666; font-weight: 500;">
+					{{if eq .EditingType "box"}}Node Name:{{else}}Edge Label:{{end}}
+				</label>
+				<input id="edit-input" type="text" value="{{.EditingValue}}" 
+					style="width: 100%; padding: 0.75rem; border: 2px solid #ddd; border-radius: 4px; font-size: 1rem; margin-bottom: 1rem;"
+					{{if eq .EditingType "edge"}}onkeypress="if(event.key === 'Enter') { event.preventDefault(); document.getElementById('save-edit-btn').click(); }"{{end}}>
+				
+				{{if eq .EditingType "box"}}
+				<label style="display: block; margin-bottom: 0.5rem; color: #666; font-weight: 500;">
+					Code/Script:
+				</label>
+				<textarea id="edit-code" 
+					style="width: 100%; min-height: 200px; padding: 0.75rem; border: 2px solid #ddd; border-radius: 4px; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; font-size: 0.9rem; margin-bottom: 1rem; resize: vertical; background: #f8f9fa;"
+					placeholder="// Enter code, script, or notes here..."
+					>{{.EditingCode}}</textarea>
+				
+				<div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+					<button class="btn btn-secondary" onclick="document.getElementById('edit-code').style.height = '400px';" style="padding: 0.5rem 1rem; font-size: 0.875rem;">
+						↕ Expand
+					</button>
+					<button class="btn btn-secondary" onclick="
+						var code = document.getElementById('edit-code');
+						code.value = '// Function template\nfunction process() {\n    // Your code here\n    \n    return result;\n}';
+						" style="padding: 0.5rem 1rem; font-size: 0.875rem;">
+						📝 Template
+					</button>
+					<button class="btn btn-secondary" onclick="
+						var code = document.getElementById('edit-code');
+						code.select();
+						document.execCommand('copy');
+						alert('Code copied to clipboard!');
+						" style="padding: 0.5rem 1rem; font-size: 0.875rem;">
+						📋 Copy
+					</button>
+				</div>
+				{{end}}
+				
+				<div style="display: flex; gap: 1rem; justify-content: flex-end;">
+					<button class="btn btn-secondary" onclick="send_event('{{.IdComponent}}', 'CancelEdit', null)">
+						Cancel
+					</button>
+					<button id="save-edit-btn" class="btn btn-primary" onclick="
+						var data = {
+							value: document.getElementById('edit-input').value
+							{{if eq .EditingType "box"}},
+							code: document.getElementById('edit-code').value
+							{{end}}
+						};
+						send_event('{{.IdComponent}}', 'SaveEdit', JSON.stringify(data));
+					">
+						Save
+					</button>
+				</div>
+			</div>
+		</div>
+		<script>
+			// Focus the input when modal opens
+			setTimeout(function() {
+				var input = document.getElementById('edit-input');
+				if(input) {
+					input.focus();
+					input.select();
+				}
+			}, 100);
+		</script>
+		{{end}}
 	</div>
 	
 	<div class="save-indicator" id="save-indicator">Saved</div>
@@ -1041,19 +1171,6 @@ func (f *EnhancedFlowTool) GetTemplate() string {
 	<script>
 	// Drag & drop is now handled in WASM module
 	// This prevents event listeners from being lost on re-render
-	
-	// Handle JSON file import
-	function handleFileImport(event) {
-		var file = event.target.files[0];
-		if (file) {
-			var reader = new FileReader();
-			reader.onload = function(e) {
-				var jsonContent = e.target.result;
-				send_event('{{.IdComponent}}', 'ImportDiagram', jsonContent);
-			};
-			reader.readAsText(file);
-		}
-	}
 	
 	// Handle keyboard shortcuts
 	document.addEventListener('keydown', function(e) {
@@ -1127,10 +1244,8 @@ func (f *EnhancedFlowTool) HandleAddNode(data interface{}) {
 	newBox := components.NewFlowBox(nodeID, label, boxType, x, y)
 	
 	if f.Canvas != nil {
-		boxDriver := liveview.NewDriver(nodeID, newBox)
-		newBox.ComponentDriver = boxDriver
-		newBox.Start()
-		f.ComponentDriver.Mount(newBox)
+		// Create and register the driver properly
+		liveview.New(nodeID, newBox)
 		f.Canvas.AddBox(newBox)
 		
 		// Update state manager
@@ -1193,7 +1308,55 @@ func (f *EnhancedFlowTool) ExportDiagram(data interface{}) {
 		return
 	}
 	
-	exportData := f.Canvas.ExportJSON()
+	// Create custom export data that includes code metadata
+	boxes := []map[string]interface{}{}
+	for _, box := range f.Canvas.Boxes {
+		boxData := map[string]interface{}{
+			"id":    box.ID,
+			"label": box.Label,
+			"type":  box.Type,
+			"x":     box.X,
+			"y":     box.Y,
+		}
+		
+		// Include code if present
+		if box.Data != nil {
+			if code, ok := box.Data["code"].(string); ok && code != "" {
+				boxData["code"] = code
+			}
+			// Include any other metadata
+			for key, value := range box.Data {
+				if key != "code" {
+					boxData[key] = value
+				}
+			}
+		}
+		
+		boxes = append(boxes, boxData)
+	}
+	
+	edges := []map[string]interface{}{}
+	for _, edge := range f.Canvas.Edges {
+		edges = append(edges, map[string]interface{}{
+			"id":       edge.ID,
+			"fromBox":  edge.FromBox,
+			"fromPort": edge.FromPort,
+			"toBox":    edge.ToBox,
+			"toPort":   edge.ToPort,
+			"type":     edge.Type,
+			"label":    edge.Label,
+		})
+	}
+	
+	exportData := map[string]interface{}{
+		"boxes": boxes,
+		"edges": edges,
+		"metadata": map[string]interface{}{
+			"exportTime": time.Now().Format(time.RFC3339),
+			"version":    "1.0",
+			"tool":       "Enhanced Flow Diagram Tool",
+		},
+	}
 	
 	// Convert to JSON string for display
 	jsonBytes, err := json.MarshalIndent(exportData, "", "  ")
@@ -1261,6 +1424,27 @@ func (f *EnhancedFlowTool) ImportDiagram(data interface{}) {
 				y := int(box["y"].(float64))
 				
 				newBox := components.NewFlowBox(id, label, boxType, x, y)
+				
+				// Import code and other metadata
+				if code, ok := box["code"].(string); ok {
+					if newBox.Data == nil {
+						newBox.Data = make(map[string]interface{})
+					}
+					newBox.Data["code"] = code
+				}
+				
+				// Import any other metadata
+				for key, value := range box {
+					if key != "id" && key != "label" && key != "type" && key != "x" && key != "y" && key != "code" {
+						if newBox.Data == nil {
+							newBox.Data = make(map[string]interface{})
+						}
+						newBox.Data[key] = value
+					}
+				}
+				
+				// Register the driver properly for imported boxes
+				liveview.New(id, newBox)
 				f.Canvas.AddBox(newBox)
 				f.NodeCount++
 			}
@@ -1281,6 +1465,9 @@ func (f *EnhancedFlowTool) ImportDiagram(data interface{}) {
 				if edgeType, ok := edge["type"].(string); ok {
 					newEdge.Type = components.EdgeType(edgeType)
 				}
+				if label, ok := edge["label"].(string); ok {
+					newEdge.Label = label
+				}
 				
 				f.Canvas.AddEdge(newEdge)
 				f.EdgeCount++
@@ -1296,25 +1483,6 @@ func (f *EnhancedFlowTool) ImportDiagram(data interface{}) {
 	f.Commit()
 }
 
-func (f *EnhancedFlowTool) AnimateFlow(data interface{}) {
-	// Animate edges to show flow
-	for _, edge := range f.Canvas.Edges {
-		edge.SetAnimated(true)
-	}
-	
-	f.LastAction = "Flow animation started"
-	f.Commit()
-	
-	// Stop animation after 5 seconds
-	go func() {
-		time.Sleep(5 * time.Second)
-		for _, edge := range f.Canvas.Edges {
-			edge.SetAnimated(false)
-		}
-		f.LastAction = "Flow animation stopped"
-		f.Commit()
-	}()
-}
 
 func (f *EnhancedFlowTool) HandleBoxClick(data interface{}) {
 	var boxID string
@@ -1698,10 +1866,6 @@ func (f *EnhancedFlowTool) HandleDragMove(data interface{}) {
 			// Update edge positions
 			f.updateEdgePositions()
 			
-			if box.ComponentDriver != nil {
-				box.Commit()
-			}
-			
 			// Emit drag event for auto-save
 			f.EventRegistry.Emit("diagram.change", map[string]interface{}{
 				"type": "box_moved",
@@ -1710,6 +1874,7 @@ func (f *EnhancedFlowTool) HandleDragMove(data interface{}) {
 		}
 	}
 	
+	// Call Commit to update the edges
 	if f.ComponentDriver != nil {
 		f.Commit()
 	}
@@ -1794,6 +1959,110 @@ func max(a, b float64) float64 {
 	return b
 }
 
+// Edit handlers
+func (f *EnhancedFlowTool) HandleEditBox(data interface{}) {
+	boxID := ""
+	if str, ok := data.(string); ok {
+		boxID = str
+	}
+	
+	if box, ok := f.Canvas.Boxes[boxID]; ok {
+		f.EditingMode = true
+		f.EditingType = "box"
+		f.EditingID = boxID
+		f.EditingValue = box.Label
+		
+		// Load existing code from box Data
+		if box.Data == nil {
+			box.Data = make(map[string]interface{})
+		}
+		if code, ok := box.Data["code"].(string); ok {
+			f.EditingCode = code
+		} else {
+			f.EditingCode = ""
+		}
+		
+		f.LastAction = fmt.Sprintf("Editing box: %s", box.Label)
+		f.Commit()
+	}
+}
+
+func (f *EnhancedFlowTool) HandleEditEdge(data interface{}) {
+	edgeID := ""
+	if str, ok := data.(string); ok {
+		edgeID = str
+	}
+	
+	if edge, ok := f.Canvas.Edges[edgeID]; ok {
+		f.EditingMode = true
+		f.EditingType = "edge"
+		f.EditingID = edgeID
+		f.EditingValue = edge.Label
+		f.LastAction = fmt.Sprintf("Editing edge label")
+		f.Commit()
+	}
+}
+
+func (f *EnhancedFlowTool) HandleSaveEdit(data interface{}) {
+	// Parse the data which could be a string or JSON object
+	var editData map[string]interface{}
+	
+	if str, ok := data.(string); ok {
+		// Try to parse as JSON first
+		if err := json.Unmarshal([]byte(str), &editData); err != nil {
+			// If not JSON, treat as simple string (for backward compatibility)
+			editData = map[string]interface{}{"value": str}
+		}
+	} else if m, ok := data.(map[string]interface{}); ok {
+		editData = m
+	}
+	
+	newValue := ""
+	if val, ok := editData["value"].(string); ok {
+		newValue = val
+	}
+	
+	if f.EditingType == "box" {
+		if box, ok := f.Canvas.Boxes[f.EditingID]; ok {
+			box.Label = newValue
+			
+			// Save code to box Data
+			if box.Data == nil {
+				box.Data = make(map[string]interface{})
+			}
+			if code, ok := editData["code"].(string); ok {
+				box.Data["code"] = code
+				f.LastAction = fmt.Sprintf("Updated box '%s' with code", newValue)
+			} else {
+				f.LastAction = fmt.Sprintf("Renamed box to: %s", newValue)
+			}
+			
+			f.saveToUndoStack()
+		}
+	} else if f.EditingType == "edge" {
+		if edge, ok := f.Canvas.Edges[f.EditingID]; ok {
+			edge.Label = newValue
+			f.LastAction = fmt.Sprintf("Updated edge label to: %s", newValue)
+			f.saveToUndoStack()
+		}
+	}
+	
+	f.EditingMode = false
+	f.EditingID = ""
+	f.EditingValue = ""
+	f.EditingCode = ""
+	f.Commit()
+}
+
+func (f *EnhancedFlowTool) HandleCancelEdit(data interface{}) {
+	f.EditingMode = false
+	f.EditingID = ""
+	f.EditingValue = ""
+	f.EditingCode = ""
+	f.LastAction = "Edit cancelled"
+	f.Commit()
+}
+
 func main() {
 	e := echo.New()
 	e.Use(middleware.Logger())
@@ -1824,6 +2093,11 @@ func main() {
 			liveview.New("export-modal", flowTool.Modal)
 		}
 		
+		// Set up the file upload driver
+		if flowTool.FileUpload != nil {
+			liveview.New("file-upload", flowTool.FileUpload)
+		}
+		
 		// Set up drivers for existing boxes
 		if flowTool.Canvas != nil {
 			for id, box := range flowTool.Canvas.Boxes {
@@ -1840,20 +2114,93 @@ func main() {
 	})
 
 	e.GET("/", func(c echo.Context) error {
-		return c.String(http.StatusOK, `
-			<h1>Enhanced Flow Diagram Tool</h1>
-			<p>Visit <a href="/example/flowtool">/example/flowtool</a> to see the interactive flow diagram editor</p>
-			<h2>New Features:</h2>
-			<ul>
-				<li>Virtual DOM for efficient rendering</li>
-				<li>State Management with auto-save</li>
-				<li>Event Registry with throttling</li>
-				<li>Template Cache for performance</li>
-				<li>Error Boundaries for recovery</li>
-				<li>Undo/Redo functionality</li>
-				<li>Auto-arrange nodes</li>
-			</ul>
-		`)
+		return c.HTML(http.StatusOK, `<!DOCTYPE html>
+<html>
+<head>
+	<title>Enhanced Flow Diagram Tool</title>
+	<style>
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+			max-width: 800px;
+			margin: 50px auto;
+			padding: 20px;
+			background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+			min-height: 100vh;
+		}
+		.container {
+			background: white;
+			border-radius: 12px;
+			padding: 2rem;
+			box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+		}
+		h1 {
+			color: #1a202c;
+			margin-bottom: 1rem;
+		}
+		h2 {
+			color: #4a5568;
+			margin-top: 2rem;
+			margin-bottom: 1rem;
+		}
+		a {
+			color: #667eea;
+			text-decoration: none;
+			font-weight: 500;
+		}
+		a:hover {
+			text-decoration: underline;
+		}
+		ul {
+			list-style: none;
+			padding: 0;
+		}
+		li {
+			padding: 0.5rem 0;
+			padding-left: 1.5rem;
+			position: relative;
+		}
+		li:before {
+			content: "✓";
+			position: absolute;
+			left: 0;
+			color: #48bb78;
+			font-weight: bold;
+		}
+		.button {
+			display: inline-block;
+			padding: 0.75rem 1.5rem;
+			background: #667eea;
+			color: white;
+			border-radius: 6px;
+			margin-top: 1rem;
+			transition: all 0.2s;
+		}
+		.button:hover {
+			background: #5a67d8;
+			transform: translateY(-2px);
+			box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+			text-decoration: none;
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<h1>Enhanced Flow Diagram Tool</h1>
+		<p>An advanced visual flow diagram editor with drag-and-drop functionality and real-time collaboration features.</p>
+		<a href="/example/flowtool" class="button">Open Flow Diagram Editor</a>
+		<h2>New Features:</h2>
+		<ul>
+			<li>Virtual DOM for efficient rendering</li>
+			<li>State Management with auto-save</li>
+			<li>Event Registry with throttling</li>
+			<li>Template Cache for performance</li>
+			<li>Error Boundaries for recovery</li>
+			<li>Undo/Redo functionality</li>
+			<li>Auto-arrange nodes</li>
+		</ul>
+	</div>
+</body>
+</html>`)
 	})
 
 	port := ":8082"
