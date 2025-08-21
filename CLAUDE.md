@@ -103,3 +103,10 @@ When developing new features, create examples in the `example/` directory follow
 - Handle errors explicitly - no silent failures
 - Use descriptive English names for public APIs
 - Follow existing patterns when adding new components
+
+
+# CRITICAL RULES (MUST)
+
+- ⚙️ **Keep @cmd/wasm/main.go generic**:  
+  The file `@cmd/wasm/main.go` is part of the framework and **must not include example-specific logic**.  
+  It must always remain generic, reusable, and decoupled from particular use cases.
