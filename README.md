@@ -50,7 +50,6 @@ type HelloWorld struct {
 
 func (h *HelloWorld) Start() {
     h.Message = "Hello, LiveView!"
-    h.Commit()
 }
 
 func (h *HelloWorld) GetTemplate() string {
@@ -58,10 +57,6 @@ func (h *HelloWorld) GetTemplate() string {
         <h1>{{.Message}}</h1>
         <button onclick="send_event('{{.IdComponent}}', 'Click')">Click Me!</button>
     </div>`
-}
-
-func (h *HelloWorld) GetDriver() liveview.LiveDriver {
-    return h
 }
 
 func (h *HelloWorld) Click(data interface{}) {
@@ -72,7 +67,7 @@ func (h *HelloWorld) Click(data interface{}) {
 func main() {
     e := echo.New()
     
-    page := liveview.PageControl{
+    page := &liveview.PageControl{
         Title:  "Hello World",
         Path:   "/",
         Router: e,
@@ -80,9 +75,8 @@ func main() {
     
     page.Register(func() liveview.LiveDriver {
         hello := &HelloWorld{}
-        driver := liveview.NewDriver("hello", hello)
-        hello.ComponentDriver = driver
-        return driver
+        hello.ComponentDriver = liveview.NewDriver("hello", hello)
+        return hello.ComponentDriver
     })
     
     e.Logger.Fatal(e.Start(":8080"))
@@ -97,6 +91,23 @@ Visit `http://localhost:8080` and see your interactive app without any JavaScrip
 - [Examples](example/) - Working examples and demos
 - [Testing Guide](liveview/testing_test.go) - Testing your components
 - [Component Library](components/) - Built-in components
+
+## 🎯 Examples
+
+The `example/` directory contains various demonstration applications:
+
+### Basic Examples
+- **example1-4**: Progressive complexity demos
+- **clock_ticking**: Real-time clock display
+- **collaborative_editing**: Multi-user text editor
+- **counter**: Simple increment/decrement counter
+
+### Advanced Examples
+- **kanban_simple**: Full-featured Kanban board with drag-and-drop
+- **todo_list**: Task management with persistence
+- **chat_app**: Real-time messaging
+- **dashboard**: Analytics dashboard with charts
+- **form_validation**: Dynamic form with validation
 
 ## 🧩 Built-in Components
 
@@ -179,12 +190,11 @@ go test -bench=. ./...
 │   ├── modal.go
 │   └── ...
 ├── example/           # Example applications
-│   ├── example1/      # Basic counter
-│   ├── example_todo/  # Todo list
+│   ├── kanban_simple/ # Kanban board demo
+│   ├── todo_list/     # Todo list demo
 │   └── ...
 └── assets/           # Static assets
-    ├── json.wasm     # WebAssembly module
-    └── wasm_exec.js  # WASM executor
+    └── live.js       # Client-side LiveView handler
 ```
 
 ## 🤝 Contributing
@@ -201,15 +211,21 @@ cd go-echo-live-view
 # Install dependencies
 go mod tidy
 
-# Build WASM module
-cd cmd/wasm/
-GOOS=js GOARCH=wasm go build -o ../../assets/json.wasm
-cd ../..
+# Run tests
+go test ./...
 
 # Run with auto-reload (requires gomon)
 go install github.com/c9s/gomon@latest
 gomon
 ```
+
+### Contribution Guidelines
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## 📈 Performance
 
@@ -226,10 +242,29 @@ gomon
 - **Data Visualization**: Real-time charts and graphs
 - **Chat Applications**: Instant messaging
 - **Monitoring Systems**: Live status updates
+- **Kanban Boards**: Project management tools
+- **E-commerce**: Live inventory and pricing
+
+## 🗺️ Roadmap
+
+- [ ] TypeScript client library
+- [ ] Component marketplace
+- [ ] Visual component designer
+- [ ] Performance profiling tools
+- [ ] Enhanced debugging capabilities
+- [ ] Mobile-optimized components
+- [ ] Offline support
+- [ ] GraphQL integration
 
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) file
+
+## 🙏 Acknowledgments
+
+- Inspired by [Phoenix LiveView](https://github.com/phoenixframework/phoenix_live_view)
+- Built on [Echo Framework](https://echo.labstack.com/)
+- Community contributors and testers
 
 ---
 
@@ -279,7 +314,6 @@ type HolaMundo struct {
 
 func (h *HolaMundo) Start() {
     h.Mensaje = "¡Hola, LiveView!"
-    h.Commit()
 }
 
 func (h *HolaMundo) GetTemplate() string {
@@ -287,10 +321,6 @@ func (h *HolaMundo) GetTemplate() string {
         <h1>{{.Mensaje}}</h1>
         <button onclick="send_event('{{.IdComponent}}', 'Click')">¡Haz Click!</button>
     </div>`
-}
-
-func (h *HolaMundo) GetDriver() liveview.LiveDriver {
-    return h
 }
 
 func (h *HolaMundo) Click(data interface{}) {
@@ -301,7 +331,7 @@ func (h *HolaMundo) Click(data interface{}) {
 func main() {
     e := echo.New()
     
-    pagina := liveview.PageControl{
+    pagina := &liveview.PageControl{
         Title:  "Hola Mundo",
         Path:   "/",
         Router: e,
@@ -309,16 +339,15 @@ func main() {
     
     pagina.Register(func() liveview.LiveDriver {
         hola := &HolaMundo{}
-        driver := liveview.NewDriver("hola", hola)
-        hola.ComponentDriver = driver
-        return driver
+        hola.ComponentDriver = liveview.NewDriver("hola", hola)
+        return hola.ComponentDriver
     })
     
     e.Logger.Fatal(e.Start(":8080"))
 }
 ```
 
-Visita `http://localhost:8080` y ve tu aplicación interactiva ¡sin JavaScript!
+¡Visita `http://localhost:8080` y ve tu aplicación interactiva sin JavaScript!
 
 ## 📚 Documentación
 
@@ -326,6 +355,23 @@ Visita `http://localhost:8080` y ve tu aplicación interactiva ¡sin JavaScript!
 - [Ejemplos](example/) - Ejemplos funcionales y demos
 - [Guía de Testing](liveview/testing_test.go) - Prueba tus componentes
 - [Biblioteca de Componentes](components/) - Componentes integrados
+
+## 🎯 Ejemplos
+
+El directorio `example/` contiene varias aplicaciones de demostración:
+
+### Ejemplos Básicos
+- **example1-4**: Demos de complejidad progresiva
+- **clock_ticking**: Reloj en tiempo real
+- **collaborative_editing**: Editor de texto multiusuario
+- **counter**: Contador simple incremento/decremento
+
+### Ejemplos Avanzados
+- **kanban_simple**: Tablero Kanban completo con arrastrar y soltar
+- **todo_list**: Gestión de tareas con persistencia
+- **chat_app**: Mensajería en tiempo real
+- **dashboard**: Panel de análisis con gráficos
+- **form_validation**: Formulario dinámico con validación
 
 ## 🧩 Componentes Integrados
 
@@ -352,7 +398,7 @@ Visita `http://localhost:8080` y ve tu aplicación interactiva ¡sin JavaScript!
 
 ## 🧪 Testing
 
-El framework incluye una suite de testing completa:
+El framework incluye una suite de pruebas completa:
 
 ```go
 func TestMiComponente(t *testing.T) {
@@ -389,7 +435,7 @@ go test -bench=. ./...
 - **Validación de Entrada**: Todos los mensajes WebSocket son validados
 - **Sanitización de Plantillas**: Protección XSS automática
 - **Protección Path Traversal**: Manejo seguro de rutas de archivos
-- **Limitación de Tasa**: Throttling de peticiones integrado
+- **Limitación de Tasa**: Throttling de solicitudes integrado
 - **Cancelación de Contexto**: Limpieza adecuada de recursos
 - **Gestión de Memoria**: Sin fugas de memoria
 
@@ -400,7 +446,7 @@ go test -bench=. ./...
 │   ├── model.go        # Sistema de componentes
 │   ├── page_content.go # Manejo de páginas y WebSocket
 │   ├── layout.go       # Sistema de layouts
-│   ├── testing.go      # Utilidades de prueba
+│   ├── testing.go      # Utilidades de testing
 │   └── security.go     # Características de seguridad
 ├── components/         # Componentes integrados
 │   ├── table.go
@@ -408,17 +454,16 @@ go test -bench=. ./...
 │   ├── modal.go
 │   └── ...
 ├── example/           # Aplicaciones de ejemplo
-│   ├── example1/      # Contador básico
-│   ├── example_todo/  # Lista de tareas
+│   ├── kanban_simple/ # Demo de tablero Kanban
+│   ├── todo_list/     # Demo de lista de tareas
 │   └── ...
-└── assets/           # Archivos estáticos
-    ├── json.wasm     # Módulo WebAssembly
-    └── wasm_exec.js  # Ejecutor WASM
+└── assets/           # Recursos estáticos
+    └── live.js       # Manejador LiveView del cliente
 ```
 
-## 🤝 Contribuyendo
+## 🤝 Contribuir
 
-¡Damos la bienvenida a las contribuciones! Por favor, consulta las pautas abajo:
+¡Damos la bienvenida a las contribuciones! Por favor, consulta las pautas a continuación:
 
 ### Configuración de Desarrollo
 
@@ -430,69 +475,57 @@ cd go-echo-live-view
 # Instalar dependencias
 go mod tidy
 
-# Compilar módulo WASM
-cd cmd/wasm/
-GOOS=js GOARCH=wasm go build -o ../../assets/json.wasm
-cd ../..
+# Ejecutar pruebas
+go test ./...
 
-# Ejecutar con auto-reload (requiere gomon)
+# Ejecutar con recarga automática (requiere gomon)
 go install github.com/c9s/gomon@latest
 gomon
 ```
 
+### Pautas de Contribución
+
+1. Haz un fork del repositorio
+2. Crea una rama de característica (`git checkout -b feature/caracteristica-increible`)
+3. Confirma tus cambios (`git commit -m 'Agregar característica increíble'`)
+4. Empuja a la rama (`git push origin feature/caracteristica-increible`)
+5. Abre un Pull Request
+
 ## 📈 Rendimiento
 
-- **Baja Latencia**: Actualizaciones DOM en sub-milisegundos
+- **Baja Latencia**: Actualizaciones del DOM en sub-milisegundos
 - **Eficiente**: Uso mínimo de ancho de banda
 - **Escalable**: Maneja miles de conexiones concurrentes
-- **Optimizado**: Diffing y patching inteligente
+- **Optimizado**: Diffing y parcheo inteligente
 
 ## 🌟 Casos de Uso
 
-- **Dashboards Administrativos**: Métricas y controles en tiempo real
-- **Herramientas Colaborativas**: Aplicaciones multi-usuario
+- **Paneles de Administración**: Métricas y controles en tiempo real
+- **Herramientas Colaborativas**: Aplicaciones multiusuario
 - **Formularios en Vivo**: Validación dinámica de formularios
-- **Visualización de Datos**: Gráficos en tiempo real
+- **Visualización de Datos**: Gráficos y tablas en tiempo real
 - **Aplicaciones de Chat**: Mensajería instantánea
 - **Sistemas de Monitoreo**: Actualizaciones de estado en vivo
+- **Tableros Kanban**: Herramientas de gestión de proyectos
+- **E-commerce**: Inventario y precios en vivo
+
+## 🗺️ Hoja de Ruta
+
+- [ ] Biblioteca cliente TypeScript
+- [ ] Marketplace de componentes
+- [ ] Diseñador visual de componentes
+- [ ] Herramientas de perfilado de rendimiento
+- [ ] Capacidades mejoradas de depuración
+- [ ] Componentes optimizados para móvil
+- [ ] Soporte offline
+- [ ] Integración con GraphQL
 
 ## 📄 Licencia
 
 Licencia MIT - ver archivo [LICENSE](LICENSE)
 
-## 🚧 Roadmap
+## 🙏 Agradecimientos
 
-### Próximas Características
-- [ ] Soporte para clustering
-- [ ] Persistencia de sesión Redis
-- [ ] Más componentes UI
-- [ ] Extensión VS Code
-- [ ] CLI para scaffolding
-
-### Completado Recientemente
-- ✅ Framework de testing completo
-- ✅ Documentación bilingüe
-- ✅ Gestión de memoria mejorada
-- ✅ 15+ componentes UI
-- ✅ Seguridad reforzada
-
-## 📞 Contacto y Soporte
-
-- **GitHub Issues**: [Reportar problemas](https://github.com/arturoeanton/go-echo-live-view/issues)
-- **Discussions**: [Preguntas y discusiones](https://github.com/arturoeanton/go-echo-live-view/discussions)
-
-## 🌐 Comunidad
-
-Únete a nuestra comunidad creciente de desarrolladores construyendo aplicaciones web en tiempo real con Go.
-
-### Proyectos Usando Go Echo LiveView
-- Sistema de monitoreo en tiempo real
-- Dashboard de administración
-- Plataforma de chat
-- Herramienta de colaboración
-
-¿Usas Go Echo LiveView? ¡Añade tu proyecto a la lista!
-
----
-
-Made with ❤️ by the Go Echo LiveView community
+- Inspirado por [Phoenix LiveView](https://github.com/phoenixframework/phoenix_live_view)
+- Construido sobre [Echo Framework](https://echo.labstack.com/)
+- Contribuidores y testers de la comunidad
