@@ -1,0 +1,66 @@
+{
+  "columns": [
+    {
+      "id": "backlog",
+      "title": "Backlog",
+      "color": "#e3e8ef",
+      "order": 0
+    },
+    {
+      "id": "desarrollo",
+      "title": "En Desarrollo",
+      "color": "#ffd4a3",
+      "order": 1
+    },
+    {
+      "id": "revision",
+      "title": "En Revisión",
+      "color": "#b3d4f8",
+      "order": 2
+    },
+    {
+      "id": "testing",
+      "title": "Testing",
+      "color": "#f8b3d0",
+      "order": 3
+    },
+    {
+      "id": "completado",
+      "title": "Completado",
+      "color": "#a3e4d7",
+      "order": 4
+    }
+  ],
+  "cards": [
+    {
+      "id": "card_test_1",
+      "title": "Configurar CI/CD",
+      "description": "Implementar pipeline de integración continua",
+      "column_id": "backlog",
+      "priority": "high",
+      "points": 8,
+      "attachments": null,
+      "links": null,
+      "tags": null,
+      "due_date": null,
+      "checklist": null,
+      "created_at": "2025-08-22T23:00:00Z",
+      "updated_at": "2025-08-22T23:00:00Z"
+    },
+    {
+      "id": "card_test_2",
+      "title": "Crear API REST",
+      "description": "Desarrollar endpoints principales",
+      "column_id": "desarrollo",
+      "priority": "urgent",
+      "points": 15,
+      "attachments": null,
+      "links": null,
+      "tags": null,
+      "due_date": null,
+      "checklist": null,
+      "created_at": "2025-08-22T23:00:00Z",
+      "updated_at": "2025-08-22T23:57:58.043979-03:00"
+    }
+  ]
+}

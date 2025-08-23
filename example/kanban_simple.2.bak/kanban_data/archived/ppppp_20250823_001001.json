@@ -1,0 +1,23 @@
+{
+  "columns": [
+    {
+      "id": "todo",
+      "title": "To Do",
+      "color": "#e3e8ef",
+      "order": 0
+    },
+    {
+      "id": "doing",
+      "title": "In Progress",
+      "color": "#ffd4a3",
+      "order": 1
+    },
+    {
+      "id": "done",
+      "title": "Done",
+      "color": "#a3e4d7",
+      "order": 2
+    }
+  ],
+  "cards": []
+}

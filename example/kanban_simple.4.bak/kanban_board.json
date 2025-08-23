@@ -1,0 +1,90 @@
+{
+  "columns": [
+    {
+      "id": "todo",
+      "title": "To Do",
+      "color": "#e3e8ef",
+      "order": 0
+    },
+    {
+      "id": "doing",
+      "title": "In Progress",
+      "color": "#ffd4a3",
+      "order": 1
+    },
+    {
+      "id": "done",
+      "title": "Done",
+      "color": "#a3e4d7",
+      "order": 4
+    },
+    {
+      "id": "col_1755899805483277000",
+      "title": "test",
+      "color": "#e3e8ef",
+      "order": 2
+    }
+  ],
+  "cards": [
+    {
+      "id": "card_1755897826",
+      "title": "Welcome to Simple Kanban!",
+      "description": "eeede",
+      "column_id": "todo",
+      "priority": "medium",
+      "points": 2,
+      "created_at": "0001-01-01T00:00:00Z",
+      "updated_at": "2025-08-22T21:15:25.635724-03:00"
+    },
+    {
+      "id": "card_1755899787202419000",
+      "title": "ddd",
+      "description": "eweww",
+      "column_id": "done",
+      "priority": "medium",
+      "points": 1,
+      "created_at": "0001-01-01T00:00:00Z",
+      "updated_at": "2025-08-22T23:32:20.945381-03:00"
+    },
+    {
+      "id": "card_1755903819706348000",
+      "title": "ssss",
+      "description": "",
+      "column_id": "doing",
+      "priority": "medium",
+      "points": 6,
+      "created_at": "2025-08-22T20:03:39.706365-03:00",
+      "updated_at": "2025-08-22T23:31:44.746411-03:00"
+    },
+    {
+      "id": "card_1755903822887533000",
+      "title": "ssss1",
+      "description": "",
+      "column_id": "doing",
+      "priority": "medium",
+      "points": 9,
+      "created_at": "2025-08-22T20:03:42.887581-03:00",
+      "updated_at": "2025-08-22T23:31:50.639198-03:00"
+    },
+    {
+      "id": "card_1755905833737037000",
+      "title": "jk",
+      "description": "lkklñ",
+      "column_id": "todo",
+      "priority": "medium",
+      "points": 7,
+      "created_at": "2025-08-22T20:37:13.737052-03:00",
+      "updated_at": "2025-08-22T23:31:43.343908-03:00"
+    },
+    {
+      "id": "card_1755908111951405000",
+      "title": "ss",
+      "description": "sss",
+      "column_id": "todo",
+      "priority": "medium",
+      "points": 4,
+      "created_at": "2025-08-22T21:15:11.951484-03:00",
+      "updated_at": "2025-08-22T21:15:32.102265-03:00"
+    }
+  ]
+}

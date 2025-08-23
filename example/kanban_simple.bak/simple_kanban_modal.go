@@ -11,70 +11,78 @@ import (
 	"github.com/arturoeanton/go-echo-live-view/liveview"
 )
 
+// JSON_FILE is the filename for persistent storage of the Kanban board data
 const JSON_FILE = "kanban_board.json"
 
-// Global state for synchronization
+// Global state for synchronization across multiple connected clients
+// These variables ensure all users see the same board state in real-time
 var (
-	globalMutex     sync.RWMutex
-	globalBoard     *KanbanBoardData
-	activeBoards    []*SimpleKanbanModal
-	activeMutex     sync.Mutex
+	globalMutex     sync.RWMutex           // Protects read/write access to globalBoard
+	globalBoard     *KanbanBoardData       // Shared board state across all connections
+	activeBoards    []*SimpleKanbanModal   // List of all active board instances
+	activeMutex     sync.Mutex             // Protects access to activeBoards slice
 )
 
-// KanbanBoardData represents the persistent board state
+// KanbanBoardData represents the persistent board state that is saved to JSON
+// This structure contains all columns and cards in the Kanban board
 type KanbanBoardData struct {
-	Columns []KanbanColumn `json:"columns"`
-	Cards   []KanbanCard   `json:"cards"`
+	Columns []KanbanColumn `json:"columns"` // List of board columns
+	Cards   []KanbanCard   `json:"cards"`   // List of all cards across columns
 }
 
-// SimpleKanbanModal - Kanban board without collaboration to avoid channel panic
+// SimpleKanbanModal is the main component for the Kanban board application
+// It manages board state, handles user interactions, and coordinates real-time updates
 type SimpleKanbanModal struct {
-	*liveview.ComponentDriver[*SimpleKanbanModal] `json:"-"`
+	*liveview.ComponentDriver[*SimpleKanbanModal] `json:"-"` // Embedded LiveView driver for WebSocket communication
 	
-	// Board data
-	Title   string         `json:"title"`
-	Columns []KanbanColumn `json:"columns"`
-	Cards   []KanbanCard   `json:"cards"`
+	// Board data - synchronized across all users
+	Title   string         `json:"title"`   // Board title displayed in header
+	Columns []KanbanColumn `json:"columns"` // Current columns in the board
+	Cards   []KanbanCard   `json:"cards"`   // Current cards across all columns
 	
-	// Modal state
-	ShowModal     bool   `json:"show_modal"`
-	ModalType     string `json:"modal_type"` // "edit_card", "add_card", "edit_column", "add_column"
-	ModalTitle    string `json:"modal_title"`
+	// Modal state - controls the popup dialog
+	ShowModal     bool   `json:"show_modal"`     // Whether modal is visible
+	ModalType     string `json:"modal_type"`     // Type: "edit_card", "add_card", "edit_column", "add_column"
+	ModalTitle    string `json:"modal_title"`    // Title shown in modal header
 	
-	// Form fields for modal
-	FormCardID      string `json:"form_card_id"`
-	FormCardTitle   string `json:"form_card_title"`
-	FormCardDesc    string `json:"form_card_desc"`
-	FormCardColumn  string `json:"form_card_column"`
-	FormCardPriority string `json:"form_card_priority"`
-	FormCardPoints  int    `json:"form_card_points"`
+	// Form fields for card editing/creation modal
+	FormCardID       string `json:"form_card_id"`       // ID of card being edited
+	FormCardTitle    string `json:"form_card_title"`    // Card title input value
+	FormCardDesc     string `json:"form_card_desc"`     // Card description input value
+	FormCardColumn   string `json:"form_card_column"`   // Selected column for the card
+	FormCardPriority string `json:"form_card_priority"` // Selected priority level
+	FormCardPoints   int    `json:"form_card_points"`   // Story points (0-100)
 	
-	FormColumnID    string `json:"form_column_id"`
-	FormColumnTitle string `json:"form_column_title"`
-	FormColumnColor string `json:"form_column_color"`
+	// Form fields for column editing/creation modal
+	FormColumnID    string `json:"form_column_id"`    // ID of column being edited
+	FormColumnTitle string `json:"form_column_title"` // Column title input value
+	FormColumnColor string `json:"form_column_color"` // Column header color
 }
 
-// KanbanColumn represents a column
+// KanbanColumn represents a single column in the Kanban board
+// Columns can be reordered by dragging their headers
 type KanbanColumn struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-	Color string `json:"color"`
-	Order int    `json:"order"`
+	ID    string `json:"id"`    // Unique identifier for the column
+	Title string `json:"title"` // Display name of the column
+	Color string `json:"color"` // Background color for the column header (hex format)
+	Order int    `json:"order"` // Display order (lower numbers appear first)
 }
 
-// KanbanCard represents a card
+// KanbanCard represents a single task/card in the Kanban board
+// Cards can be moved between columns via drag and drop
 type KanbanCard struct {
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	ColumnID    string    `json:"column_id"`
-	Priority    string    `json:"priority"`
-	Points      int       `json:"points"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          string    `json:"id"`          // Unique identifier for the card
+	Title       string    `json:"title"`       // Card title (required)
+	Description string    `json:"description"` // Detailed description of the task
+	ColumnID    string    `json:"column_id"`   // ID of the column containing this card
+	Priority    string    `json:"priority"`    // Priority level: low, medium, high, urgent
+	Points      int       `json:"points"`      // Story points for effort estimation (0-100)
+	CreatedAt   time.Time `json:"created_at"`  // Timestamp when card was created
+	UpdatedAt   time.Time `json:"updated_at"`  // Timestamp of last modification
 }
 
-// loadBoardData loads board data from JSON file
+// loadBoardData loads the board state from the JSON file
+// If the file doesn't exist, it returns a default board configuration
 func loadBoardData() *KanbanBoardData {
 	data, err := os.ReadFile(JSON_FILE)
 	if err != nil {
@@ -110,7 +118,8 @@ func loadBoardData() *KanbanBoardData {
 	return &boardData
 }
 
-// saveBoardData saves board data to JSON file
+// saveBoardData persists the current board state to the JSON file
+// It uses mutex locking to ensure thread-safe file writes
 func saveBoardData(board *KanbanBoardData) error {
 	globalMutex.Lock()
 	defer globalMutex.Unlock()
@@ -128,7 +137,8 @@ func saveBoardData(board *KanbanBoardData) error {
 	return nil
 }
 
-// registerBoard adds a board instance to the active boards list
+// registerBoard adds a new board instance to the active boards list
+// This is called when a new WebSocket connection is established
 func registerBoard(board *SimpleKanbanModal) {
 	activeMutex.Lock()
 	defer activeMutex.Unlock()
@@ -137,6 +147,7 @@ func registerBoard(board *SimpleKanbanModal) {
 }
 
 // unregisterBoard removes a board instance from the active boards list
+// This is called when a WebSocket connection is closed
 func unregisterBoard(board *SimpleKanbanModal) {
 	activeMutex.Lock()
 	defer activeMutex.Unlock()
@@ -149,7 +160,9 @@ func unregisterBoard(board *SimpleKanbanModal) {
 	fmt.Printf("📝 Unregistered board, total active: %d\n", len(activeBoards))
 }
 
-// broadcastUpdate sends updates to all active board instances
+// broadcastUpdate sends the current global board state to all connected clients
+// This ensures real-time synchronization across all users viewing the board
+// It includes panic recovery to handle closed WebSocket connections gracefully
 func broadcastUpdate() {
 	activeMutex.Lock()
 	defer activeMutex.Unlock()
@@ -187,7 +200,9 @@ func broadcastUpdate() {
 	}
 }
 
-// updateGlobalState updates global state and broadcasts to all boards
+// updateGlobalState updates the global board state and triggers synchronization
+// This function is called whenever any user makes changes to the board
+// It saves to JSON asynchronously and broadcasts updates to all connected clients
 func updateGlobalState(columns []KanbanColumn, cards []KanbanCard) {
 	globalMutex.Lock()
 	if globalBoard == nil {
@@ -210,7 +225,9 @@ func updateGlobalState(columns []KanbanColumn, cards []KanbanCard) {
 	broadcastUpdate()
 }
 
-// NewSimpleKanbanModal creates a new simple kanban board with modals
+// NewSimpleKanbanModal creates and initializes a new Kanban board instance
+// It loads the board state from the global shared state or creates a default board
+// Each instance represents a single user's connection to the board
 func NewSimpleKanbanModal() *SimpleKanbanModal {
 	board := &SimpleKanbanModal{
 		Title:     "📋 Simple Kanban Board",
@@ -243,12 +260,15 @@ func NewSimpleKanbanModal() *SimpleKanbanModal {
 	return board
 }
 
-// GetDriver returns the component driver
+// GetDriver returns the LiveView component driver for WebSocket communication
+// This is required by the LiveView framework for managing the component lifecycle
 func (k *SimpleKanbanModal) GetDriver() liveview.LiveDriver {
 	return k.ComponentDriver
 }
 
-// Start initializes the board
+// Start initializes the component and registers all event handlers
+// This method is called when a WebSocket connection is established
+// It sets up all the event handlers for user interactions
 func (k *SimpleKanbanModal) Start() {
 	k.SetID("content")
 	
@@ -611,7 +631,10 @@ func (k *SimpleKanbanModal) GetTemplate() string {
 	`
 }
 
-// Helper functions
+// Helper functions for template rendering and data queries
+
+// GetCardsForColumn returns all cards that belong to a specific column
+// Used in the template to display cards within each column
 func (k *SimpleKanbanModal) GetCardsForColumn(columnID string) []KanbanCard {
 	var cards []KanbanCard
 	for _, card := range k.Cards {
@@ -622,6 +645,8 @@ func (k *SimpleKanbanModal) GetCardsForColumn(columnID string) []KanbanCard {
 	return cards
 }
 
+// GetCardCount returns the number of cards in a specific column
+// Used in the template to display card count in column headers
 func (k *SimpleKanbanModal) GetCardCount(columnID string) int {
 	count := 0
 	for _, card := range k.Cards {
@@ -632,7 +657,8 @@ func (k *SimpleKanbanModal) GetCardCount(columnID string) int {
 	return count
 }
 
-// GetColumnPoints returns total points for a column
+// GetColumnPoints calculates and returns the total story points for all cards in a column
+// Used in the template to display total points in column headers
 func (k *SimpleKanbanModal) GetColumnPoints(columnID string) int {
 	total := 0
 	for _, card := range k.Cards {
@@ -643,7 +669,8 @@ func (k *SimpleKanbanModal) GetColumnPoints(columnID string) int {
 	return total
 }
 
-// GetOrderedColumns returns columns sorted by their Order field
+// GetOrderedColumns returns a sorted copy of columns based on their Order field
+// This ensures columns are displayed in the correct sequence in the UI
 func (k *SimpleKanbanModal) GetOrderedColumns() []KanbanColumn {
 	// Create a copy to avoid modifying original slice
 	columns := make([]KanbanColumn, len(k.Columns))
@@ -660,9 +687,10 @@ func (k *SimpleKanbanModal) GetOrderedColumns() []KanbanColumn {
 	return columns
 }
 
-// Event Handlers
+// Event Handlers - These methods handle user interactions from the browser
 
-// MoveCard handles HTML5 drag and drop
+// MoveCard handles dragging and dropping cards between columns
+// It updates the card's column assignment and saves the changes
 func (k *SimpleKanbanModal) MoveCard(data interface{}) {
 	var event map[string]interface{}
 	if jsonData, ok := data.(string); ok {
@@ -691,7 +719,8 @@ func (k *SimpleKanbanModal) MoveCard(data interface{}) {
 	}
 }
 
-// EditCard opens modal to edit a card
+// EditCard opens the modal dialog for editing an existing card
+// It populates the form fields with the card's current data
 func (k *SimpleKanbanModal) EditCard(data interface{}) {
 	cardID := ""
 	if id, ok := data.(string); ok {
@@ -718,7 +747,8 @@ func (k *SimpleKanbanModal) EditCard(data interface{}) {
 	k.Commit()
 }
 
-// AddCard opens modal to add a new card
+// AddCard opens the modal dialog for creating a new card
+// It initializes the form with default values and the target column
 func (k *SimpleKanbanModal) AddCard(data interface{}) {
 	columnID := ""
 	if id, ok := data.(string); ok {
@@ -737,7 +767,8 @@ func (k *SimpleKanbanModal) AddCard(data interface{}) {
 	k.Commit()
 }
 
-// EditColumn opens modal to edit a column
+// EditColumn opens the modal dialog for editing a column's properties
+// Users can change the column title and color
 func (k *SimpleKanbanModal) EditColumn(data interface{}) {
 	columnID := ""
 	if id, ok := data.(string); ok {
@@ -825,13 +856,15 @@ func (k *SimpleKanbanModal) UpdateFormField(data interface{}) {
 	}
 }
 
-// CloseModal closes the modal
+// CloseModal closes the modal dialog without saving changes
 func (k *SimpleKanbanModal) CloseModal(data interface{}) {
 	k.ShowModal = false
 	k.Commit()
 }
 
-// SaveModal saves the modal form
+// SaveModal processes and saves the modal form data
+// It handles creating new cards/columns or updating existing ones
+// Changes are saved to the global state and broadcast to all users
 func (k *SimpleKanbanModal) SaveModal(data interface{}) {
 	// Create copies for modification
 	updatedCards := make([]KanbanCard, len(k.Cards))
@@ -937,6 +970,8 @@ func (k *SimpleKanbanModal) DeleteColumn(data interface{}) {
 }
 
 // ReorderColumns handles column reordering via drag & drop
+// It swaps the position of two columns when one is dropped on another
+// The swap is done by exchanging the Order field values
 func (k *SimpleKanbanModal) ReorderColumns(data interface{}) {
 	var event map[string]interface{}
 	if jsonData, ok := data.(string); ok {
