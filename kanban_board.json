@@ -1,0 +1,40 @@
+{
+  "cards": [
+    {
+      "id": "card_1755900385",
+      "title": "Welcome to Simple Kanban!",
+      "content": "Drag cards between columns. Your changes are automatically saved.",
+      "column_id": "todo",
+      "order": 13,
+      "color": "#fff",
+      "created": "2025-08-22T19:06:25.322556-03:00",
+      "updated": "2025-08-22T19:08:49.768849-03:00"
+    }
+  ],
+  "columns": [
+    {
+      "id": "todo",
+      "title": "To Do",
+      "color": "#e3e8ef",
+      "order": 0
+    },
+    {
+      "id": "doing",
+      "title": "In Progress",
+      "color": "#ffd4a3",
+      "order": 1
+    },
+    {
+      "id": "done",
+      "title": "Done",
+      "color": "#a3e4d7",
+      "order": 2
+    },
+    {
+      "id": "col_1755900465474034000",
+      "title": "test",
+      "color": "#e3e8ef",
+      "order": 3
+    }
+  ]
+}

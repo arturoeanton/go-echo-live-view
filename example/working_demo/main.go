@@ -130,7 +130,7 @@ func main() {
 		Title:  "Kanban Board - LiveView Demo",
 		Router: e,
 	}
-	
+
 	// Register kanban board factory
 	kanbanPage.Register(func() liveview.LiveDriver {
 		// Create board instance
@@ -139,13 +139,13 @@ func main() {
 	})
 
 	// Start server
-	port := ":8080"
+	port := ":8089"
 	fmt.Printf("🚀 LiveView Collaborative Demo Server\n")
 	fmt.Printf("🌐 Starting on http://localhost%s\n", port)
 	fmt.Println("\n📋 Available routes:")
 	fmt.Println("  / - Main page with information")
 	fmt.Println("  /kanban - Interactive Kanban board")
-	
+
 	if err := e.Start(port); err != nil {
 		log.Fatal(err)
 	}
@@ -155,29 +155,29 @@ func main() {
 func createKanbanBoard() *components.KanbanBoard {
 	// Create board
 	board := &components.KanbanBoard{}
-	
+
 	// IMPORTANT: Initialize embedded struct first
 	board.CollaborativeComponent = &liveview.CollaborativeComponent{}
-	
+
 	// Then create the driver
 	board.ComponentDriver = liveview.NewDriver[*components.KanbanBoard]("kanban_board", board)
-	
+
 	// Set the driver reference
 	if board.CollaborativeComponent != nil {
 		board.CollaborativeComponent.Driver = board.ComponentDriver
 	}
-	
+
 	// Initialize board data
 	board.Title = "Project Management Board"
 	board.Description = "Drag cards between columns to organize your work"
-	
+
 	// Setup columns
 	board.Columns = []components.KanbanColumn{
 		{
-			ID:       "backlog",
-			Title:    "📝 Backlog",
-			Color:    "#95a5a6",
-			Order:    0,
+			ID:    "backlog",
+			Title: "📝 Backlog",
+			Color: "#95a5a6",
+			Order: 0,
 		},
 		{
 			ID:       "todo",
@@ -201,13 +201,13 @@ func createKanbanBoard() *components.KanbanBoard {
 			WIPLimit: 2,
 		},
 		{
-			ID:       "done",
-			Title:    "✅ Done",
-			Color:    "#27ae60",
-			Order:    4,
+			ID:    "done",
+			Title: "✅ Done",
+			Color: "#27ae60",
+			Order: 4,
 		},
 	}
-	
+
 	// Add sample cards
 	board.Cards = []components.KanbanCard{
 		{
@@ -222,25 +222,25 @@ func createKanbanBoard() *components.KanbanBoard {
 			Completed:   true,
 		},
 		{
-			ID:          "task2",
-			Title:       "Design database schema",
-			Description: "Create ERD and define all tables with relationships",
-			ColumnID:    "progress",
-			Priority:    "high",
-			Points:      5,
-			CreatedAt:   time.Now().Add(-48 * time.Hour),
-			UpdatedAt:   time.Now(),
+			ID:           "task2",
+			Title:        "Design database schema",
+			Description:  "Create ERD and define all tables with relationships",
+			ColumnID:     "progress",
+			Priority:     "high",
+			Points:       5,
+			CreatedAt:    time.Now().Add(-48 * time.Hour),
+			UpdatedAt:    time.Now(),
 			AssigneeName: "Alice",
 		},
 		{
-			ID:          "task3",
-			Title:       "Implement user authentication",
-			Description: "Add login, registration, and password reset",
-			ColumnID:    "progress",
-			Priority:    "high",
-			Points:      8,
-			CreatedAt:   time.Now().Add(-24 * time.Hour),
-			UpdatedAt:   time.Now(),
+			ID:           "task3",
+			Title:        "Implement user authentication",
+			Description:  "Add login, registration, and password reset",
+			ColumnID:     "progress",
+			Priority:     "high",
+			Points:       8,
+			CreatedAt:    time.Now().Add(-24 * time.Hour),
+			UpdatedAt:    time.Now(),
 			AssigneeName: "Bob",
 		},
 		{
@@ -284,18 +284,18 @@ func createKanbanBoard() *components.KanbanBoard {
 			UpdatedAt:   time.Now(),
 		},
 		{
-			ID:          "task8",
-			Title:       "Mobile responsive design",
-			Description: "Ensure UI works well on all screen sizes",
-			ColumnID:    "review",
-			Priority:    "medium",
-			Points:      3,
-			CreatedAt:   time.Now().Add(-3 * time.Hour),
-			UpdatedAt:   time.Now(),
+			ID:           "task8",
+			Title:        "Mobile responsive design",
+			Description:  "Ensure UI works well on all screen sizes",
+			ColumnID:     "review",
+			Priority:     "medium",
+			Points:       3,
+			CreatedAt:    time.Now().Add(-3 * time.Hour),
+			UpdatedAt:    time.Now(),
 			AssigneeName: "Charlie",
 		},
 	}
-	
+
 	// Setup labels
 	board.Labels = []components.KanbanLabel{
 		{ID: "feature", Name: "Feature", Color: "#3498db"},
@@ -304,9 +304,9 @@ func createKanbanBoard() *components.KanbanBoard {
 		{ID: "documentation", Name: "Docs", Color: "#95a5a6"},
 		{ID: "testing", Name: "Testing", Color: "#f39c12"},
 	}
-	
+
 	// Initialize active users map
 	board.ActiveUsers = make(map[string]*components.UserActivity)
-	
+
 	return board
 }

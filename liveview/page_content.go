@@ -22,6 +22,7 @@ type PageControl struct {
 	AfterCode string
 	Router    *echo.Echo
 	Debug     bool
+	Version   string
 }
 
 var (
@@ -34,36 +35,14 @@ var (
 			{{.Css}}
 		</style>
 		<meta charset="utf-8"/>
-        <script src="/assets/wasm_exec.js"></script>
+        <script src="/assets/live.js?v={{.Version}}"></script>
 	</head>
     <body>
 		<div id="content"> 
 		</div>
 		<script>
-		// Global send_event stub until WASM loads
-		window.send_event = function(id, event, data) {
-			console.log('[Pre-WASM] Event queued:', id, event, data);
-			// Queue events until WASM is ready
-			if (!window._eventQueue) window._eventQueue = [];
-			window._eventQueue.push({id, event, data});
-		};
-		
-		const go = new Go();
-		WebAssembly.instantiateStreaming(fetch("/assets/json.wasm?v=" + Date.now()), go.importObject).then((result) => {
-			go.run(result.instance);
-			console.log('[WASM] Loaded successfully');
-			
-			// Process queued events
-			if (window._eventQueue && window._eventQueue.length > 0) {
-				console.log('[WASM] Processing', window._eventQueue.length, 'queued events');
-				window._eventQueue.forEach(e => {
-					window.send_event(e.id, e.event, e.data);
-				});
-				window._eventQueue = [];
-			}
-		}).catch(err => {
-			console.error('[WASM] Failed to load:', err);
-		});
+		// LiveView will be initialized by live.js
+		console.log('[LiveView] Initializing...');
 		</script>
 		{{.AfterCode}}
     </body>
@@ -85,6 +64,8 @@ func (pc *PageControl) Register(fx func() LiveDriver) {
 	if Exists("live.js") {
 		pc.LiveJs, _ = FileToString("live.js")
 	}
+	// Add version for cache busting
+	pc.Version = fmt.Sprintf("%d", time.Now().Unix())
 
 	pc.Router.Static("/assets", "assets")
 	pc.Router.GET(pc.Path, func(c echo.Context) error {
@@ -97,8 +78,16 @@ func (pc *PageControl) Register(fx func() LiveDriver) {
 	})
 
 	pc.Router.GET(pc.Path+"ws_goliveview", func(c echo.Context) error {
-
+		fmt.Printf("[DEBUG] WebSocket handler called for path: %s\n", c.Request().URL.Path)
+		
 		content := fx()
+		fmt.Printf("[DEBUG] Factory returned content: %T\n", content)
+		
+		if content == nil {
+			fmt.Println("[ERROR] Factory returned nil content")
+			return fmt.Errorf("factory returned nil")
+		}
+		
 		defer func() {
 			func() {
 				MuLayout.Lock()
@@ -136,10 +125,13 @@ func (pc *PageControl) Register(fx func() LiveDriver) {
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
 		}
+		fmt.Println("[DEBUG] Attempting WebSocket upgrade")
 		ws, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
 		if err != nil {
+			fmt.Printf("[ERROR] WebSocket upgrade failed: %v\n", err)
 			return err
 		}
+		fmt.Println("[DEBUG] WebSocket upgrade successful")
 		defer ws.Close()
 		
 		// SEC-005: Configurar límite máximo de mensaje

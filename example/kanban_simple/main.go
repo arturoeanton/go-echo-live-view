@@ -1,52 +1,60 @@
+// Package main implements a simple Kanban board server with real-time collaboration
+// This application demonstrates the Go Echo LiveView framework capabilities for
+// building interactive web applications with WebSocket-based real-time updates.
 package main
 
 import (
 	"fmt"
 	"log"
 
-	"github.com/arturoeanton/go-echo-live-view/components"
 	"github.com/arturoeanton/go-echo-live-view/liveview"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
 
+// main initializes and starts the Kanban board server
+// It sets up the Echo web framework, configures middleware, registers the LiveView component,
+// and starts listening on port 8080 for incoming connections.
 func main() {
-	// Create Echo instance
+	// Create Echo instance - the main web framework
 	e := echo.New()
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
+	
+	// Add middleware for request logging and panic recovery
+	e.Use(middleware.Logger())  // Logs all HTTP requests
+	e.Use(middleware.Recover()) // Recovers from panics and returns 500 error
+	
+	// Serve static files (for assets like live.js WebAssembly module)
+	e.Static("/assets", "assets")
 
-	// Create page control
+	// Create page control - manages the LiveView page lifecycle
 	page := &liveview.PageControl{
-		Path:   "/",
-		Title:  "Kanban Board Demo",
-		Router: e,
+		Path:   "/",                                    // URL path for the Kanban board
+		Title:  "Simple Kanban Board with JSON Storage", // Browser title
+		Router: e,                                       // Echo router instance
 	}
 
-	// Register the board factory
+	// Register the board factory - creates new board instance per WebSocket connection
+	// This ensures each user gets their own component instance while sharing global state
 	page.Register(func() liveview.LiveDriver {
-		// Create a new kanban board instance for each connection
-		board := &components.KanbanBoard{}
+		// Create new Kanban board instance with modal support
+		board := NewSimpleKanbanModal()
+		fmt.Println("✅ New client connected to kanban board")
 		
-		// Initialize CollaborativeComponent first to avoid nil pointer
-		board.CollaborativeComponent = &liveview.CollaborativeComponent{
-			Driver: nil, // Will be set by ComponentDriver
-		}
-		
-		// Now create the driver
-		board.ComponentDriver = liveview.NewDriver[*components.KanbanBoard]("kanban_main", board)
-		
-		// Set the driver reference in CollaborativeComponent
-		board.CollaborativeComponent.Driver = board.ComponentDriver
-		
+		// Return the component driver that manages WebSocket communication
 		return board.ComponentDriver
 	})
 
-	// Start server
+	// Configure server port
 	port := ":8080"
-	fmt.Printf("📋 Kanban Board Server starting on http://localhost%s\n", port)
-	fmt.Println("🌐 Open http://localhost%s to view the board\n", port)
 	
+	// Display startup banner with helpful information
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Printf("📋 Simple Kanban Board Server starting on http://localhost%s\n", port)
+	fmt.Println("💾 Board state will be saved to kanban_board.json")
+	fmt.Printf("🌐 Open http://localhost%s to view the board\n", port)
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	
+	// Start the HTTP server
 	if err := e.Start(port); err != nil {
 		log.Fatal(err)
 	}

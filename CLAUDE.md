@@ -66,13 +66,7 @@ This is a Go implementation of Phoenix LiveView-style reactive web development u
 - `assets/`: Static files including compiled WASM module
 - `cmd/wasm/`: WASM build target for browser-side JSON handling
 
-### WASM Integration
 
-The framework uses WebAssembly for browser-side JSON processing:
-- Built from `cmd/wasm/main.go` into `assets/json.wasm`
-- Loaded automatically in the base HTML template
-- Handles WebSocket message parsing and DOM manipulation
-- Includes auto-reconnect functionality on disconnect
 
 ### Testing Examples
 
@@ -107,8 +101,8 @@ When developing new features, create examples in the `example/` directory follow
 
 # CRITICAL RULES (MUST)
 
-- ⚙️ **Keep @cmd/wasm/main.go generic**:  
-  The file `@cmd/wasm/main.go` is part of the framework and **must not include example-specific logic**.  
+- ⚙️ **Keep @assets/live.js generic**:  
+  The file `@assets/live.js` is part of the framework and **must not include example-specific logic**.  
   It must always remain generic, reusable, and decoupled from particular use cases.
 
 - 🧩 **This is a framework, not an application**:  
